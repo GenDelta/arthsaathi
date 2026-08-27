@@ -2,6 +2,7 @@
 ARCHITECTURE.md
 IMPLEMENTATION_PLAN.md
 AGENT_INSTRUCTIONS.md
+.agents/
 
 # ─── Secrets & environment ─────────────────────────────────────────────────────
 .env
