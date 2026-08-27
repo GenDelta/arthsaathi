@@ -1,0 +1,72 @@
+# ─── Planning & agent instructions (not committed) ────────────────────────────
+ARCHITECTURE.md
+IMPLEMENTATION_PLAN.md
+AGENT_INSTRUCTIONS.md
+
+# ─── Secrets & environment ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── Databases ─────────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ─── LanceDB ───────────────────────────────────────────────────────────────────
+.lancedb/
+
+# ─── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Node / Next.js ────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.npm
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+
+# ─── Docker ────────────────────────────────────────────────────────────────────
+# (docker-compose.yml IS committed — only ignore runtime overrides)
+docker-compose.override.yml
+
+# ─── OS & editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

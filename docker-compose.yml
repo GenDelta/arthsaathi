@@ -1,0 +1,37 @@
+version: "3.9"
+
+# Placeholder docker-compose.yml — filled out in Phase 10 (tasks 10.1–10.2).
+# Do not use this file for local development until Phase 10 is complete.
+# For local development, run backend and frontend independently:
+#   Backend:  cd backend && uvicorn app.main:app --reload
+#   Frontend: cd frontend && npm run dev
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - db_data:/app/data
+    # TODO (task 10.1): complete Dockerfile and runtime config
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    # TODO (task 10.1): complete Dockerfile and Next.js standalone config
+
+volumes:
+  db_data:
+    driver: local
+    # Mounts arthsaathi.db and .lancedb/ — see ARCHITECTURE.md §1.2 Containerization
