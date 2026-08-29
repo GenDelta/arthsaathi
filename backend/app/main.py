@@ -46,11 +46,22 @@ def create_app() -> FastAPI:
             content={"error": {"code": exc.code, "message": exc.message}},
         )
 
-    # ─── Routers ─────────────────────────────────────────────────────────────
-    # Routers are registered here as each Phase completes.
-    # from app.api import auth, documents, schemes, transactions, nudges, ngo, notifications
-    # application.include_router(auth.router, prefix="/api")
-    # ... (uncomment as each Phase is implemented)
+    # ─── Routers ──────────────────────────────────────────────────────────────
+    # Phase 2: Authentication
+    from app.api import auth
+
+    application.include_router(auth.router, prefix="/api")
+
+    # Future phases — registered here as each phase completes:
+    from app.api import scam_scanner
+    application.include_router(scam_scanner.router, prefix="/api")
+    # from app.api import documents, schemes, transactions, nudges, ngo, notifications
+    # application.include_router(documents.router, prefix="/api")
+    # application.include_router(schemes.router, prefix="/api")
+    # application.include_router(transactions.router, prefix="/api")
+    # application.include_router(nudges.router, prefix="/api")
+    # application.include_router(ngo.router, prefix="/api")
+    # application.include_router(notifications.router, prefix="/api")
 
     # ─── Health check ─────────────────────────────────────────────────────────
     @application.get("/health", tags=["ops"])

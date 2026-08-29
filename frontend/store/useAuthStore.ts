@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Auth store (Zustand slice) — ARCHITECTURE.md §1.2, AGENT_INSTRUCTIONS.md §3
  *
@@ -5,36 +7,82 @@
  * Token storage: in-memory (access) + localStorage with explicit consent note (refresh).
  */
 
-import { create } from 'zustand';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { authApi, type MeResponse } from "@/lib/api-client";
+
+type Role = "CITIZEN" | "NGO_ADMIN" | "NGO_EDUCATOR" | "SPONSOR_VIEWER";
 
 interface User {
   id: string;
   name: string;
-  role: 'CITIZEN' | 'NGO_ADMIN' | 'NGO_EDUCATOR' | 'SPONSOR_VIEWER';
+  role: Role;
   language_pref: string;
   organization_id: string | null;
 }
 
 interface AuthState {
   accessToken: string | null;
+  refreshToken: string | null;
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
 
-  setAuth: (accessToken: string, user: User) => void;
-  clearAuth: () => void;
+  setAuth: (accessToken: string, refreshToken: string, user: User) => void;
   setAccessToken: (token: string) => void;
+  clearAuth: () => void;
+  fetchMe: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  accessToken: null,
-  user: null,
-  isAuthenticated: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      accessToken: null,
+      refreshToken: null,
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
 
-  setAuth: (accessToken, user) =>
-    set({ accessToken, user, isAuthenticated: true }),
+      setAuth(accessToken, refreshToken, user) {
+        set({ accessToken, refreshToken, user, isAuthenticated: true });
+      },
 
-  clearAuth: () =>
-    set({ accessToken: null, user: null, isAuthenticated: false }),
+      setAccessToken(token) {
+        set({ accessToken: token });
+      },
 
-  setAccessToken: (token) => set({ accessToken: token }),
-}));
+      clearAuth() {
+        set({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false });
+      },
+
+      async fetchMe() {
+        const token = get().accessToken;
+        if (!token) return;
+        set({ isLoading: true });
+        try {
+          const me: MeResponse = await authApi.me(token);
+          set({
+            user: {
+              id: me.id,
+              name: me.name,
+              role: me.role as Role,
+              language_pref: me.language_pref,
+              organization_id: me.organization_id,
+            },
+            isAuthenticated: true,
+          });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+    }),
+    {
+      name: "arthsaathi-auth",
+      // Only persist tokens — not user data (always re-fetched on load)
+      partialize: (s) => ({
+        accessToken: s.accessToken,
+        refreshToken: s.refreshToken,
+      }),
+    },
+  ),
+);

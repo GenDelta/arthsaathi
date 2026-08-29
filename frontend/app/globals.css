@@ -1,26 +1,425 @@
 @import "tailwindcss";
 
+/* ── ArthSaathi Design System ────────────────────────────────────────────────
+   Palette: Amber-on-Indigo — coin metal against night sky.
+   Not the default terracotta. Warm, trust-building, distinctly Indian.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand palette */
+  --color-amber:       #E8A838;   /* primary — coin gold       */
+  --color-amber-light: #F5C96A;   /* amber hover / highlights  */
+  --color-amber-glow:  rgba(232, 168, 56, 0.18);
+  --color-indigo:      #1A1A3E;   /* deep surface              */
+  --color-indigo-mid:  #262650;   /* card background           */
+  --color-indigo-edge: #32326A;   /* border / divider          */
+  --color-rose:        #C4654A;   /* destructive / error       */
+  --color-cream:       #FAF5E8;   /* primary text on dark      */
+  --color-cream-dim:   rgba(250, 245, 232, 0.55);
+
+  /* Semantic aliases */
+  --background:  var(--color-indigo);
+  --surface:     var(--color-indigo-mid);
+  --border:      var(--color-indigo-edge);
+  --text:        var(--color-cream);
+  --text-muted:  var(--color-cream-dim);
+  --accent:      var(--color-amber);
+  --accent-glow: var(--color-amber-glow);
+  --error:       var(--color-rose);
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-fast:  150ms;
+  --duration-base:  250ms;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ── Base ────────────────────────────────────────────────────────────────── */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  min-height: 100%;
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Auth layout ─────────────────────────────────────────────────────────── */
+
+.auth-shell {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  padding: var(--sp-6);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Signature element: breathing coin ring behind the form */
+.auth-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(232, 168, 56, 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 80% 90%, rgba(196, 101, 74, 0.07) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.coin-ring {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(480px, 90vw);
+  height: min(480px, 90vw);
+  border-radius: 50%;
+  border: 1.5px solid rgba(232, 168, 56, 0.12);
+  box-shadow:
+    0 0 0 40px rgba(232, 168, 56, 0.04),
+    0 0 0 80px rgba(232, 168, 56, 0.025),
+    0 0 0 120px rgba(232, 168, 56, 0.012);
+  pointer-events: none;
+  animation: breathe 5s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.7; scale: 1; }
+  50%       { opacity: 1;   scale: 1.04; }
+}
+
+/* ── Auth card ───────────────────────────────────────────────────────────── */
+
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-10) var(--sp-8);
+  box-shadow:
+    0 0 0 1px rgba(232, 168, 56, 0.06),
+    0 24px 64px rgba(10, 10, 26, 0.6);
+}
+
+/* ── Logo / Brand mark ───────────────────────────────────────────────────── */
+
+.brand-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-8);
+}
+
+/* The signature: Devanagari logotype — ₹ without the glyph */
+.brand-logotype {
+  font-family: 'Noto Sans Devanagari', sans-serif;
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-amber);
+  text-shadow: 0 0 32px rgba(232, 168, 56, 0.35);
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Typography in card ──────────────────────────────────────────────────── */
+
+.auth-heading {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--sp-1) 0;
+  text-align: center;
+}
+
+.auth-subheading {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0 0 var(--sp-8) 0;
+}
+
+/* ── Form elements ───────────────────────────────────────────────────────── */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+
+.form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-cream-dim);
+  letter-spacing: 0.01em;
+}
+
+.form-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 1rem;
+  padding: var(--sp-4) var(--sp-5);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out-quart),
+    box-shadow   var(--duration-fast) var(--ease-out-quart),
+    background   var(--duration-fast) var(--ease-out-quart);
+  /* Large tap target for mobile — minimum 48px */
+  min-height: 52px;
+}
+
+.form-input::placeholder {
+  color: rgba(250, 245, 232, 0.25);
+}
+
+.form-input:focus {
+  border-color: var(--color-amber);
+  background: rgba(232, 168, 56, 0.05);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.form-input:user-valid {
+  border-color: rgba(232, 168, 56, 0.5);
+}
+
+.form-input:user-invalid {
+  border-color: var(--color-rose);
+  box-shadow: 0 0 0 3px rgba(196, 101, 74, 0.12);
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.form-error {
+  font-size: 0.8125rem;
+  color: var(--color-rose);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ── Primary button ──────────────────────────────────────────────────────── */
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 52px;
+  background: var(--color-amber);
+  color: var(--color-indigo);
+  font-weight: 700;
+  font-size: 1rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background  var(--duration-fast) var(--ease-out-quart),
+    box-shadow  var(--duration-fast) var(--ease-out-quart),
+    scale       var(--duration-fast) var(--ease-out-quart);
+  margin-top: var(--sp-6);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-amber-light);
+  box-shadow: 0 0 0 4px var(--accent-glow), 0 8px 24px rgba(232, 168, 56, 0.25);
+}
+
+.btn-primary:active:not(:disabled) {
+  scale: 0.98;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 3px;
+}
+
+/* Loading spinner inside button */
+.btn-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(26, 26, 62, 0.35);
+  border-top-color: var(--color-indigo);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { rotate: 360deg; }
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-6) 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Auth link ───────────────────────────────────────────────────────────── */
+
+.auth-link-row {
+  text-align: center;
+  margin-top: var(--sp-6);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.auth-link {
+  color: var(--color-amber);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--duration-fast);
+}
+
+.auth-link:hover { color: var(--color-amber-light); }
+.auth-link:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Language badge ──────────────────────────────────────────────────────── */
+
+.lang-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  background: rgba(232, 168, 56, 0.1);
+  border: 1px solid rgba(232, 168, 56, 0.2);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  color: var(--color-amber);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.lang-badge:hover {
+  background: rgba(232, 168, 56, 0.18);
+}
+
+/* ── Occupation select ───────────────────────────────────────────────────── */
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23E8A838' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 44px;
+}
+
+/* ── Global alert ────────────────────────────────────────────────────────── */
+
+.global-error {
+  background: rgba(196, 101, 74, 0.12);
+  border: 1px solid rgba(196, 101, 74, 0.3);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 0.875rem;
+  color: #F08C7A;
+  margin-bottom: var(--sp-5);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+/* ── Card entrance animation ─────────────────────────────────────────────── */
+
+.auth-card {
+  animation: card-enter 0.45s var(--ease-out-quart) both;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: var(--sp-8) var(--sp-6);
+    border-radius: var(--radius-sm);
+    border-left: none;
+    border-right: none;
+    max-width: 100%;
+    box-shadow: none;
+    background: transparent;
+  }
 }

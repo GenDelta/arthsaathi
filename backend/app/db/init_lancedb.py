@@ -22,8 +22,8 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 # Embedding dimension — must match the provider selected at runtime.
-# OpenAI text-embedding-3-small produces 1536-dimensional vectors.
-EMBEDDING_DIM = 1536
+# Default for nomic-embed-text is 768; text-embedding-3-small is 1536.
+EMBEDDING_DIM = get_settings().embedding_dim
 
 # Schema: predatory_clauses (used by Extraction & Scam Agent)
 PREDATORY_CLAUSES_SCHEMA = pa.schema(

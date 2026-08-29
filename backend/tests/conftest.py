@@ -30,7 +30,12 @@ def test_db_path() -> Generator[str, None, None]:
         init_db(database_path=path)
         yield path
     finally:
-        Path(path).unlink(missing_ok=True)
+        try:
+            Path(path).unlink(missing_ok=True)
+        except PermissionError:
+            # Windows: aiosqlite may keep the file locked briefly after teardown.
+            # The OS will release it; temp files are cleaned up on reboot.
+            pass
 
 
 @pytest_asyncio.fixture()

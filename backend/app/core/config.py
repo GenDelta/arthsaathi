@@ -18,8 +18,14 @@ class Settings(BaseSettings):
     refresh_token_ttl_days: int = 7
 
     # ─── LLM provider ─────────────────────────────────────────────────────────
-    llm_provider: str = "openai"  # "openai" | "anthropic"
-    llm_api_key: str
+    llm_provider: str = "ollama"  # "ollama" | "openai" | "anthropic"
+    llm_api_key: str = "not-required-for-ollama"  # only used for openai/anthropic
+    llm_model_name: str = "glm-5.3-flash"
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dim: int = 384
+
+    # ─── Ollama ───────────────────────────────────────────────────────────────
+    ollama_base_url: str = "http://127.0.0.1:11434"
 
     # ─── Database ─────────────────────────────────────────────────────────────
     database_path: str = "./arthsaathi.db"
@@ -34,8 +40,8 @@ class Settings(BaseSettings):
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
-        if v not in {"openai", "anthropic"}:
-            raise ValueError("llm_provider must be 'openai' or 'anthropic'")
+        if v not in {"ollama", "openai", "anthropic"}:
+            raise ValueError("llm_provider must be 'ollama', 'openai', or 'anthropic'")
         return v
 
 
