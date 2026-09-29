@@ -2,7 +2,11 @@
 ARCHITECTURE.md
 IMPLEMENTATION_PLAN.md
 AGENT_INSTRUCTIONS.md
+FRONTEND_PLAN.md
+IMPLEMENTED_FEATURES.md
+ONBOARDING_IMPLEMENTATION_PLAN.md
 .agents/
+.agent/
 
 # ─── Secrets & environment ─────────────────────────────────────────────────────
 .env
@@ -33,6 +37,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/lib/
 lib64/
 parts/
 sdist/
@@ -71,3 +76,5 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+skills-lock.json

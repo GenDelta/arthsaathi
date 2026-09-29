@@ -44,7 +44,21 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     for migration_path in migration_files:
         logger.info("Applying migration: %s", migration_path.name)
         sql = migration_path.read_text(encoding="utf-8")
-        conn.executescript(sql)
+        try:
+            conn.executescript(sql)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" in str(exc).lower():
+                # Migration already partially applied (ALTER TABLE already ran).
+                # Re-run only the non-ALTER statements using executescript on a
+                # filtered version of the SQL.
+                logger.debug("Duplicate column detected — skipping ALTER TABLE statements: %s", exc)
+                filtered = "\n".join(
+                    line for line in sql.splitlines()
+                    if not line.strip().upper().startswith("ALTER TABLE")
+                )
+                conn.executescript(filtered)
+            else:
+                raise
         conn.commit()
         logger.info("Migration applied: %s", migration_path.name)
 

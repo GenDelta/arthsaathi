@@ -74,6 +74,16 @@ class DocumentRepository:
             raise NotFoundError(f"Document '{doc_id}' not found")
         return _row_to_doc(row)
 
+    async def get_all_for_user(self, user_id: str) -> list[DocumentRow]:
+        async with aiosqlite.connect(self._db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(
+                "SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC",
+                (user_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [_row_to_doc(row) for row in rows]
+
     async def update_status(
         self,
         doc_id: str,

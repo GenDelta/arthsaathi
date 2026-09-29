@@ -22,6 +22,8 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "langchain-huggingface>=1.2.2",
     "sentence-transformers>=6.0.0",
+    "pyotp>=2.10.0",
+    "qrcode[pil]>=8.2",
 ]
 
 [project.optional-dependencies]

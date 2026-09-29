@@ -1,9 +1,11 @@
-import pytest
 import asyncio
+
+import pytest
 from httpx import AsyncClient
 
 from app.core.security import create_access_token
 from app.repositories.user import UserRepository
+
 
 # Mock the OCR function
 @pytest.fixture(autouse=True)
@@ -15,7 +17,6 @@ def mock_ocr(monkeypatch):
 # Mock the scam_graph graph
 @pytest.fixture(autouse=True)
 def mock_scam_graph(monkeypatch):
-    from app.api import scam_scanner
     import app.agents.scam.graph
     
     class DummyGraph:

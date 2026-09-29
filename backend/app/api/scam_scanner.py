@@ -165,6 +165,27 @@ async def verify_scan(
     )
 
 
+@router.get("", response_model=list[ScanStatusResponse])
+async def get_history(
+    ctx: TenantContext = Depends(get_tenant_context),
+) -> list[ScanStatusResponse]:
+    """Get all historical scans for the user."""
+    doc_repo = DocumentRepository()
+    docs = await doc_repo.get_all_for_user(ctx.user_id)
+    
+    responses = []
+    for doc in docs:
+        responses.append(ScanStatusResponse(
+            document_id=doc.id,
+            status=doc.status,
+            risk_level=doc.risk_level,
+            risk_summary=doc.risk_summary,
+            error_message=doc.error_message,
+            matched_clauses=[]  # omitting full clause fetch for the list view to stay fast
+        ))
+    return responses
+
+
 @router.get("/{document_id}", response_model=ScanStatusResponse)
 async def get_scan_status(
     document_id: str,
@@ -172,6 +193,7 @@ async def get_scan_status(
 ) -> ScanStatusResponse:
     """Poll for scam analysis status."""
     import lancedb
+
     from app.core.config import get_settings
     
     doc_repo = DocumentRepository()

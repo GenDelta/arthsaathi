@@ -1,8 +1,10 @@
 import io
-from PIL import Image, UnidentifiedImageError
+
 import pytesseract
-from app.core.exceptions import FileTooLargeError, OcrIllegibleError, UnsupportedMediaTypeError
+from PIL import Image, UnidentifiedImageError
+
 from app.core.config import get_settings
+from app.core.exceptions import FileTooLargeError, OcrIllegibleError, UnsupportedMediaTypeError
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 

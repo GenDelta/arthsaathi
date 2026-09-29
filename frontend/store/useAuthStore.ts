@@ -26,9 +26,10 @@ interface AuthState {
   refreshToken: string | null;
   user: User | null;
   isAuthenticated: boolean;
+  isOnboarded: boolean;
   isLoading: boolean;
 
-  setAuth: (accessToken: string, refreshToken: string, user: User) => void;
+  setAuth: (accessToken: string, refreshToken: string, user: User, isOnboarded?: boolean) => void;
   setAccessToken: (token: string) => void;
   clearAuth: () => void;
   fetchMe: () => Promise<void>;
@@ -41,10 +42,11 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       user: null,
       isAuthenticated: false,
+      isOnboarded: false,
       isLoading: false,
 
-      setAuth(accessToken, refreshToken, user) {
-        set({ accessToken, refreshToken, user, isAuthenticated: true });
+      setAuth(accessToken, refreshToken, user, isOnboarded = false) {
+        set({ accessToken, refreshToken, user, isAuthenticated: true, isOnboarded });
       },
 
       setAccessToken(token) {
@@ -52,7 +54,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearAuth() {
-        set({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false });
+        set({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false, isOnboarded: false });
       },
 
       async fetchMe() {
@@ -70,7 +72,12 @@ export const useAuthStore = create<AuthState>()(
               organization_id: me.organization_id,
             },
             isAuthenticated: true,
+            isOnboarded: me.is_onboarded,
           });
+        } catch (err) {
+          // If the token is invalid (e.g., DB wiped, user deleted, expired),
+          // clear the local auth state so the user is logged out cleanly.
+          get().clearAuth();
         } finally {
           set({ isLoading: false });
         }
