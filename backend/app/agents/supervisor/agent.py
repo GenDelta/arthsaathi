@@ -1,0 +1,145 @@
+import json
+import logging
+from typing import Literal
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+
+from app.core.llm import get_llm
+from app.agents.supervisor.state import ArthSaathiState
+
+logger = logging.getLogger(__name__)
+
+# ─── Prompts ──────────────────────────────────────────────────────────────────
+
+ROUTER_PROMPT = """You are the ArthSaathi Supervisor Router.
+Your job is to analyze the user's input and classify their INTENT into exactly ONE of the following categories:
+
+1. TRANSACTION: The user is reporting an income earned or an expense spent (e.g. "I got 500 from delivery", "paid 200 for food").
+2. KATHA: The user is asking to explain a financial concept (e.g. "What is compound interest?").
+3. SCHEME: The user is asking about welfare schemes, benefits, or government subsidies.
+4. SCAM: The user is reporting a suspicious message, asking if a loan app is fake, or uploading contract text.
+5. GENERAL: General conversation or questions that do not fit the above.
+
+Output ONLY a JSON object with the key "intent" and the exact string value of the category.
+Example: {{"intent": "TRANSACTION"}}"""
+
+GUARD_PROMPT = """You are the ArthSaathi Adversarial Output Guard.
+Review the proposed response to the user.
+1. Ensure no guaranteed financial returns are promised.
+2. Ensure there is no formal financial advisory phrasing.
+3. Keep the tone helpful, empathetic, and simple.
+If the response violates safety rules, output a safe, generalized fallback response instead.
+Otherwise, output the response exactly as it is."""
+
+# ─── Nodes ────────────────────────────────────────────────────────────────────
+
+async def router_node(state: ArthSaathiState) -> dict:
+    """Analyze the last message and route to the correct sub-agent."""
+    llm = get_llm(temperature=0)
+    last_msg = state["messages"][-1].content
+    
+    response = await llm.ainvoke([
+        SystemMessage(content=ROUTER_PROMPT),
+        HumanMessage(content=last_msg)
+    ])
+    
+    raw = response.content.strip()
+    if raw.startswith("```"):
+        import re
+        raw = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+        
+    try:
+        data = json.loads(raw)
+        intent = data.get("intent", "GENERAL")
+    except Exception:
+        intent = "GENERAL"
+        
+    logger.info(f"Supervisor routed intent: {intent}")
+    return {"intent": intent}
+
+
+async def transaction_agent_node(state: ArthSaathiState) -> dict:
+    """Mock node for Transaction extraction (would connect to transactions API logic)."""
+    return {"final_response": "I have logged your transaction in the ledger."}
+
+async def katha_agent_node(state: ArthSaathiState) -> dict:
+    """Mock node for Katha Mode routing."""
+    return {"final_response": "Redirecting you to Katha Mode for a story on that."}
+
+async def scheme_agent_node(state: ArthSaathiState) -> dict:
+    """Mock node for Matchmaker routing."""
+    return {"final_response": "Let me check the welfare schemes you qualify for."}
+
+async def scam_agent_node(state: ArthSaathiState) -> dict:
+    """Mock node for Scam Scanner routing."""
+    return {"final_response": "I will scan that for predatory clauses."}
+
+async def general_agent_node(state: ArthSaathiState) -> dict:
+    """Handle general chitchat."""
+    llm = get_llm(temperature=0.6)
+    sys_msg = "You are ArthSaathi, a friendly financial assistant for Indian gig workers."
+    res = await llm.ainvoke([SystemMessage(content=sys_msg)] + list(state["messages"]))
+    return {"final_response": res.content}
+
+
+async def output_guard_node(state: ArthSaathiState) -> dict:
+    """Validate final response for financial safety compliance."""
+    llm = get_llm(temperature=0)
+    proposed = state.get("final_response", "I cannot help with that right now.")
+    
+    res = await llm.ainvoke([
+        SystemMessage(content=GUARD_PROMPT),
+        HumanMessage(content=f"Proposed response:\n{proposed}")
+    ])
+    
+    return {"final_response": res.content}
+
+# ─── Edges ────────────────────────────────────────────────────────────────────
+
+def route_intent(state: ArthSaathiState) -> Literal["transaction", "katha", "scheme", "scam", "general"]:
+    intent = state.get("intent")
+    if intent == "TRANSACTION": return "transaction"
+    if intent == "KATHA": return "katha"
+    if intent == "SCHEME": return "scheme"
+    if intent == "SCAM": return "scam"
+    return "general"
+
+# ─── Graph Compilation ────────────────────────────────────────────────────────
+
+def create_supervisor_graph():
+    builder = StateGraph(ArthSaathiState)
+    
+    builder.add_node("router", router_node)
+    builder.add_node("transaction", transaction_agent_node)
+    builder.add_node("katha", katha_agent_node)
+    builder.add_node("scheme", scheme_agent_node)
+    builder.add_node("scam", scam_agent_node)
+    builder.add_node("general", general_agent_node)
+    builder.add_node("output_guard", output_guard_node)
+    
+    builder.set_entry_point("router")
+    
+    builder.add_conditional_edges(
+        "router",
+        route_intent,
+        {
+            "transaction": "transaction",
+            "katha": "katha",
+            "scheme": "scheme",
+            "scam": "scam",
+            "general": "general"
+        }
+    )
+    
+    # All sub-agents route to output guard before returning to user
+    for node in ["transaction", "katha", "scheme", "scam", "general"]:
+        builder.add_edge(node, "output_guard")
+        
+    builder.add_edge("output_guard", END)
+    
+    memory = MemorySaver()
+    return builder.compile(checkpointer=memory)
+
+supervisor_agent = create_supervisor_graph()
