@@ -259,8 +259,10 @@ def push_guardian_alert(user_id: str, alert: dict):
         for q in _user_queues[user_id]:
             q.put_nowait(alert)
 
+from fastapi import Request
+
 @router.get("/stream")
-async def stream_guardian_alerts(ctx: TenantContext = Depends(get_tenant_context)):
+async def stream_guardian_alerts(request: Request, ctx: TenantContext = Depends(get_tenant_context)):
     """SSE endpoint for real-time background Guardian alerts."""
     q = asyncio.Queue()
     if ctx.user_id not in _user_queues:
@@ -270,9 +272,15 @@ async def stream_guardian_alerts(ctx: TenantContext = Depends(get_tenant_context
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
             while True:
-                # Wait for a new alert to be pushed
-                alert = await q.get()
-                yield f"data: {json.dumps(alert)}\n\n"
+                if await request.is_disconnected():
+                    break
+                try:
+                    # Timeout periodically to check disconnection
+                    alert = await asyncio.wait_for(q.get(), timeout=2.0)
+                    yield f"data: {json.dumps(alert)}\n\n"
+                except asyncio.TimeoutError:
+                    # Send a heartbeat comment to keep the connection alive
+                    yield ": heartbeat\n\n"
         except asyncio.CancelledError:
             pass
         finally:

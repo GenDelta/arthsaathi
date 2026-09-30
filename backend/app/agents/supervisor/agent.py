@@ -119,25 +119,30 @@ async def transaction_agent_node(state: ArthSaathiState) -> dict:
         logger.error(f"Transaction extraction failed: {e}")
         return {"final_response": "I couldn't process that transaction right now. Please try again."}
 
+import urllib.parse
+
 async def katha_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Katha Mode routing."""
+    last_msg = state["messages"][-1].content
     return {
         "final_response": "Redirecting you to Katha Mode for a story on that.",
-        "client_action": {"type": "navigate", "path": "/katha"}
+        "client_action": {"type": "navigate", "path": f"/katha?q={urllib.parse.quote(last_msg)}"}
     }
 
 async def scheme_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Matchmaker routing."""
+    last_msg = state["messages"][-1].content
     return {
         "final_response": "Let me check the welfare schemes you qualify for.",
-        "client_action": {"type": "navigate", "path": "/schemes"}
+        "client_action": {"type": "navigate", "path": f"/schemes?q={urllib.parse.quote(last_msg)}"}
     }
 
 async def scam_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Scam Scanner routing."""
+    last_msg = state["messages"][-1].content
     return {
         "final_response": "I will redirect you to the Scam Scanner.",
-        "client_action": {"type": "navigate", "path": "/scam-scanner"}
+        "client_action": {"type": "navigate", "path": f"/scam-scanner?q={urllib.parse.quote(last_msg)}"}
     }
 
 async def general_agent_node(state: ArthSaathiState) -> dict:

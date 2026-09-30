@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { ChatInput } from "./components/ChatInput";
 import { StoryMessage } from "./components/StoryMessage";
 import { BookOpen } from "lucide-react";
-
+import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 
 type Message = { id: string; role: "user" | "storyteller"; content: string };
@@ -15,10 +15,22 @@ const SUGGESTIONS = [
   "Why is Insurance important?"
 ];
 
-export default function KathaPage() {
+function KathaChat() {
   const { accessToken } = useAuthStore();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && accessToken) {
+      setInitialized(true);
+      const q = searchParams.get("q");
+      if (q) {
+        handleSend(q);
+      }
+    }
+  }, [searchParams, accessToken, initialized]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || !accessToken) return;
@@ -129,5 +141,13 @@ export default function KathaPage() {
         <ChatInput onSend={handleSend} disabled={isStreaming} />
       </div>
     </div>
+  );
+}
+
+export default function KathaPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-text-secondary">Loading Katha Mode...</div>}>
+      <KathaChat />
+    </Suspense>
   );
 }
