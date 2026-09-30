@@ -53,14 +53,18 @@ def create_app() -> FastAPI:
     application.include_router(auth.router, prefix="/api")
 
     # Future phases — registered here as each phase completes:
-    from app.api import onboarding, profile, scam_scanner
+    from app.api import onboarding, profile, scam_scanner, schemes, transactions
     application.include_router(scam_scanner.router, prefix="/api")
     application.include_router(onboarding.router, prefix="/api")
     application.include_router(profile.router, prefix="/api")
-    # from app.api import documents, schemes, transactions, nudges, ngo, notifications
+    application.include_router(schemes.router, prefix="/api")
+    # Phase 3: Transactions & Insights
+    from app.api import guardian, transactions
+    application.include_router(transactions.router, prefix="/api")
+    application.include_router(guardian.router, prefix="/api")
+    # Future phases — registered here as each phase completes:
+    # from app.api import documents, nudges, ngo, notifications
     # application.include_router(documents.router, prefix="/api")
-    # application.include_router(schemes.router, prefix="/api")
-    # application.include_router(transactions.router, prefix="/api")
     # application.include_router(nudges.router, prefix="/api")
     # application.include_router(ngo.router, prefix="/api")
     # application.include_router(notifications.router, prefix="/api")

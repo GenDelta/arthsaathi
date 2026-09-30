@@ -66,14 +66,17 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
         await conn.execute(
             """
             INSERT INTO user_profiles 
-                (user_id, employment_type, occupation, income_frequency, average_income, financial_pain_points)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (user_id, employment_type, occupation, income_frequency, average_income, financial_pain_points, date_of_birth, gender, state_of_residence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 employment_type = excluded.employment_type,
                 occupation = excluded.occupation,
                 income_frequency = excluded.income_frequency,
                 average_income = excluded.average_income,
                 financial_pain_points = excluded.financial_pain_points,
+                date_of_birth = excluded.date_of_birth,
+                gender = excluded.gender,
+                state_of_residence = excluded.state_of_residence,
                 updated_at = datetime('now')
             """,
             (
@@ -82,7 +85,10 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
                 profile.get("occupation"),
                 profile.get("income_frequency"),
                 profile.get("average_income"),
-                profile.get("financial_pain_points")
+                profile.get("financial_pain_points"),
+                profile.get("date_of_birth"),
+                profile.get("gender"),
+                profile.get("state_of_residence")
             )
         )
         

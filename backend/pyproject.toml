@@ -24,6 +24,9 @@ dependencies = [
     "sentence-transformers>=6.0.0",
     "pyotp>=2.10.0",
     "qrcode[pil]>=8.2",
+    "pandas>=2.3.3",
+    "pdfplumber>=0.11.0",   # Phase 3: bank-statement PDF table extraction
+    "pikepdf>=9.0.0",       # Phase 3: in-memory PDF decryption
 ]
 
 [project.optional-dependencies]

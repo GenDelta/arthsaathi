@@ -22,6 +22,9 @@ class ProfileResponse(BaseModel):
     income_frequency: str | None = None
     average_income: float | None = None
     financial_pain_points: str | None = None
+    date_of_birth: str | None = None
+    gender: str | None = None
+    state_of_residence: str | None = None
 
 @router.get("", response_model=ProfileResponse)
 async def get_profile(ctx: TenantContext = Depends(get_tenant_context)) -> ProfileResponse:
@@ -50,4 +53,7 @@ async def get_profile(ctx: TenantContext = Depends(get_tenant_context)) -> Profi
         income_frequency=profile_row["income_frequency"] if profile_row else None,
         average_income=profile_row["average_income"] if profile_row else None,
         financial_pain_points=profile_row["financial_pain_points"] if profile_row else None,
+        date_of_birth=profile_row["date_of_birth"] if profile_row else None,
+        gender=profile_row["gender"] if profile_row else None,
+        state_of_residence=profile_row["state_of_residence"] if profile_row else None,
     )

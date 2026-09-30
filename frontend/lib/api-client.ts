@@ -101,6 +101,9 @@ export interface ProfileResponse {
   income_frequency?: string;
   average_income?: number;
   financial_pain_points?: string;
+  date_of_birth?: string;
+  gender?: string;
+  state_of_residence?: string;
 }
 
 export const profileApi = {
@@ -158,4 +161,180 @@ export const scamApi = {
       headers: { Authorization: `Bearer ${token}` },
     });
   }
+};
+
+export interface SchemeMatch {
+  id: string;
+  title: string;
+  ministry: string;
+  benefit_summary: string;
+  application_steps: string;
+  eligibility: string;
+  confidence_score?: number;
+}
+
+export const schemesApi = {
+  async match(token: string): Promise<{ schemes: SchemeMatch[] }> {
+    return request<{ schemes: SchemeMatch[] }>("/api/schemes/match", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+};
+
+// ─── Transactions ──────────────────────────────────────────────────────────────
+
+export interface Transaction {
+  id: string;
+  type: "INCOME" | "EXPENSE";
+  category: string;
+  amount: number;
+  currency: string;
+  description: string;
+  occurred_at: string;
+  created_at: string;
+}
+
+export interface TransactionSummary {
+  total_income: number;
+  total_expenses: number;
+  net_savings: number;
+  count: number;
+}
+
+export interface TransactionsResponse {
+  transactions: Transaction[];
+  summary: TransactionSummary;
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface TransactionFilters {
+  type?: "INCOME" | "EXPENSE" | "all";
+  category?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CategoryBreakdown {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface BreakdownResponse {
+  income: CategoryBreakdown[];
+  expense: CategoryBreakdown[];
+}
+
+export const transactionsApi = {
+  async getBreakdown(
+    token: string,
+    start_date?: string,
+    end_date?: string
+  ): Promise<BreakdownResponse> {
+    const params = new URLSearchParams();
+    if (start_date) params.set("start_date", start_date);
+    if (end_date) params.set("end_date", end_date);
+    const qs = params.toString();
+    return request<BreakdownResponse>(
+      `/api/transactions/breakdown${qs ? `?${qs}` : ""}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+  },
+
+  async list(
+    token: string,
+    filters?: TransactionFilters
+  ): Promise<TransactionsResponse> {
+    const params = new URLSearchParams();
+    if (filters?.type && filters.type !== "all") params.set("type", filters.type);
+    if (filters?.category) params.set("category", filters.category);
+    if (filters?.start_date) params.set("start_date", filters.start_date);
+    if (filters?.end_date) params.set("end_date", filters.end_date);
+    if (filters?.page) params.set("page", String(filters.page));
+    if (filters?.page_size) params.set("page_size", String(filters.page_size));
+    const qs = params.toString();
+    return request<TransactionsResponse>(
+      `/api/transactions${qs ? `?${qs}` : ""}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+  },
+
+
+  async uploadPdf(
+    token: string,
+    file: File,
+    password?: string
+  ): Promise<{ inserted: number; transactions: Transaction[] }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (password) formData.append("password", password);
+    return request<{ inserted: number; transactions: Transaction[] }>(
+      "/api/transactions/upload-pdf",
+      {
+        method: "POST",
+        body: formData,
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+  },
+
+  async voice(
+    token: string,
+    text: string
+  ): Promise<{ transaction: Transaction }> {
+    return request<{ transaction: Transaction }>("/api/transactions/voice", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  async delete(
+    token: string,
+    id: string
+  ): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>(`/api/transactions/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+};
+
+// ─── Guardian Nudges ───────────────────────────────────────────────────────────
+
+export interface Nudge {
+  id: string;
+  type: "GUARDIAN_ALERT" | "MICRO_SAVINGS" | "INFO";
+  title: string;
+  message: string;
+  actionLabel: string;
+}
+
+export const guardianApi = {
+  async getNudges(
+    token: string,
+    start_date?: string,
+    end_date?: string
+  ): Promise<{ nudges: Nudge[] }> {
+    const params = new URLSearchParams();
+    if (start_date) params.set("start_date", start_date);
+    if (end_date) params.set("end_date", end_date);
+    const qs = params.toString();
+    return request<{ nudges: Nudge[] }>(`/api/guardian/nudges${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };

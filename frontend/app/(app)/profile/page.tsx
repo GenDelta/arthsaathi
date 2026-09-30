@@ -73,11 +73,33 @@ export default function ProfilePage() {
 
           <div className="flex items-start gap-4">
             <div className="p-2 bg-accent/10 rounded-lg shrink-0">
+              <User className="text-accent w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Demographics</p>
+              <p className="text-text-primary font-medium mt-1">
+                {profile.gender || "Not specified"} &bull; {profile.date_of_birth || "DOB Not specified"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-accent/10 rounded-lg shrink-0">
               <Phone className="text-accent w-5 h-5" />
             </div>
             <div>
               <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Mobile Number</p>
               <p className="text-text-primary font-medium mt-1 font-mono tracking-wider">{profile.phone_number}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-accent/10 rounded-lg shrink-0">
+              <Briefcase className="text-accent w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">State of Residence</p>
+              <p className="text-text-primary font-medium mt-1">{profile.state_of_residence || "Not specified"}</p>
             </div>
           </div>
         </SurfaceCard>
