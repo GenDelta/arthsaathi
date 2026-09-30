@@ -149,6 +149,14 @@ async def get_nudges(
         tracked_progress = []
         for tr in tracked_rows:
             entity = tr["entity_name"]
+            
+            # Additional loans taken (INCOME)
+            c_inc = await conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) as additional FROM transactions WHERE user_id = ? AND type = 'INCOME' AND LOWER(description) LIKE ?",
+                (ctx.user_id, f"%{entity.lower()}%")
+            )
+            r_inc = await c_inc.fetchone()
+            
             # Total paid all time
             c_tot = await conn.execute(
                 "SELECT COALESCE(SUM(amount), 0) as paid FROM transactions WHERE user_id = ? AND type = 'EXPENSE' AND LOWER(description) LIKE ?",
@@ -166,7 +174,7 @@ async def get_nudges(
             tracked_progress.append({
                 "id": tr["id"],
                 "entity": entity,
-                "target": tr["total_amount"],
+                "target": tr["total_amount"] + r_inc["additional"],
                 "paid_total": r_tot["paid"],
                 "paid_period": r_per["paid"]
             })

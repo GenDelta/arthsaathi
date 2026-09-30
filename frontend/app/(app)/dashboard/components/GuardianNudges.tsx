@@ -66,7 +66,7 @@ export function GuardianNudges({ refresh = 0, start_date, end_date }: GuardianNu
       } else if (nudge.id.startsWith("tracked_debt_")) {
         // Extract the entity name from the title: "Debt Progress: {entity}"
         const entity = nudge.title.replace("Debt Progress: ", "");
-        transactionsApi.list(accessToken!, { type: "EXPENSE", query: entity, start_date, end_date })
+        transactionsApi.list(accessToken!, { type: "all", query: entity, start_date, end_date })
           .then((res) => setInsightData(res.transactions))
           .finally(() => setInsightLoading(false));
       } else {
