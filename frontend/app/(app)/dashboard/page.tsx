@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { OverviewCards, getDatePresets } from "./components/OverviewCards";
 import { GuardianNudges } from "./components/GuardianNudges";
@@ -16,6 +16,12 @@ const DATE_PRESETS = getDatePresets();
 export default function DashboardPage() {
   const [refresh, setRefresh] = useState(0);
   const bump = useCallback(() => setRefresh((n) => n + 1), []);
+
+  useEffect(() => {
+    const handleGlobalRefresh = () => bump();
+    window.addEventListener("refresh_transactions", handleGlobalRefresh);
+    return () => window.removeEventListener("refresh_transactions", handleGlobalRefresh);
+  }, [bump]);
 
   // Shared date filter — drives both OverviewCards and RecentTransactions
   const [presetValue, setPresetValue] = useState("all");

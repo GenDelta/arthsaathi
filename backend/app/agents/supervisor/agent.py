@@ -61,8 +61,63 @@ async def router_node(state: ArthSaathiState) -> dict:
 
 
 async def transaction_agent_node(state: ArthSaathiState) -> dict:
-    """Mock node for Transaction extraction (would connect to transactions API logic)."""
-    return {"final_response": "I have logged your transaction in the ledger."}
+    """Node for Transaction extraction."""
+    from app.api.transactions import _VOICE_EXTRACTION_PROMPT, _normalise_category, _ensure_transactions_table
+    from app.core.config import get_settings
+    import aiosqlite
+    import uuid
+    import re
+    from datetime import datetime, timezone
+    
+    last_msg = state["messages"][-1].content
+    user_id = state["user_id"]
+    llm = get_llm(temperature=0.0)
+    prompt = _VOICE_EXTRACTION_PROMPT.format(text=last_msg)
+    
+    try:
+        response = await llm.ainvoke(prompt)
+        raw_json = response.content.strip()
+        if raw_json.startswith("```"):
+            raw_json = re.sub(r"^```[a-z]*\n?", "", raw_json).rstrip("`").strip()
+            
+        extracted = json.loads(raw_json)
+        tx_type = str(extracted.get("type", "EXPENSE")).upper()
+        if tx_type not in {"INCOME", "EXPENSE"}:
+            tx_type = "EXPENSE"
+            
+        amount = float(extracted.get("amount", 0))
+        if amount <= 0:
+            return {"final_response": "I couldn't detect a valid amount. Please specify the amount clearly."}
+            
+        description = str(extracted.get("description", last_msg))[:500]
+        category = _normalise_category(str(extracted.get("category", "OTHER")), tx_type)
+        
+        db_path = get_settings().database_path
+        now = datetime.now(timezone.utc).isoformat()
+        tx_id = str(uuid.uuid4())
+        
+        async with aiosqlite.connect(db_path) as conn:
+            await _ensure_transactions_table(conn)
+            await conn.execute(
+                """
+                INSERT INTO transactions
+                    (id, user_id, type, category, amount, currency, description, occurred_at, created_at)
+                VALUES (?, ?, ?, ?, ?, 'INR', ?, ?, ?)
+                """,
+                (tx_id, user_id, tx_type, category, amount, description, now, now),
+            )
+            await conn.commit()
+            
+        # We trigger the background rules via API wrapper or just return success
+        # The background tasks are tied to FastAPI background_tasks, so we'll need to trigger them manually if we want
+        return {
+            "final_response": f"I have logged your {tx_type.lower()} of ₹{amount} for '{description}'.",
+            "extracted_transaction": {"id": tx_id, "amount": amount, "type": tx_type}
+        }
+        
+    except Exception as e:
+        logger.error(f"Transaction extraction failed: {e}")
+        return {"final_response": "I couldn't process that transaction right now. Please try again."}
 
 async def katha_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Katha Mode routing."""

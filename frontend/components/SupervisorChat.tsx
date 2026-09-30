@@ -14,11 +14,27 @@ export function SupervisorChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // 1. Load history
+  useEffect(() => {
+    const saved = localStorage.getItem("arthsaathi_supervisor_chat");
+    if (saved) {
+      try { setMessages(JSON.parse(saved)); } catch (e) {}
+    }
+  }, []);
+
+  // 2. Save history
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("arthsaathi_supervisor_chat", JSON.stringify(messages));
+    }
+  }, [messages]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, activeAgent]);
 
   const handleSend = async () => {
     if (!input.trim() || !accessToken) return;
@@ -27,6 +43,7 @@ export function SupervisorChat() {
     setInput("");
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", text: userMsg }]);
     setLoading(true);
+    setActiveAgent("Router");
 
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/supervisor/chat`, {
@@ -39,19 +56,61 @@ export function SupervisorChat() {
       });
 
       if (!res.ok) throw new Error("Failed to chat");
-      const data = await res.json();
+      
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) return;
 
-      setMessages((prev) => [
-        ...prev,
-        { id: (Date.now() + 1).toString(), role: "bot", text: data.response },
-      ]);
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.replace("data: ", "");
+            if (dataStr === "[DONE]") {
+              setLoading(false);
+              setActiveAgent(null);
+              break;
+            }
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === "agent_activity") {
+                const nodeMap: Record<string, string> = {
+                  "router": "Intent Router",
+                  "transaction": "Transaction Logger",
+                  "scam": "Scam Scanner",
+                  "scheme": "Scheme Matchmaker",
+                  "katha": "Katha Storyteller",
+                  "general": "ArthSaathi Brain",
+                  "output_guard": "Safety Guard"
+                };
+                setActiveAgent(nodeMap[data.node] || data.node);
+              } else if (data.type === "final_response") {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: Date.now().toString(), role: "bot", text: data.response },
+                ]);
+              } else if (data.type === "action" && data.action === "transaction_logged") {
+                window.dispatchEvent(new CustomEvent("refresh_transactions"));
+              }
+            } catch (e) {}
+          }
+        }
+      }
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: "bot", text: "Sorry, I am offline right now." },
+        { id: Date.now().toString(), role: "bot", text: "Sorry, I am offline right now." },
       ]);
     } finally {
       setLoading(false);
+      setActiveAgent(null);
     }
   };
 
@@ -131,14 +190,16 @@ export function SupervisorChat() {
                   </div>
                 </div>
               ))}
-              {loading && (
+              {loading && activeAgent && (
                 <div className="flex items-start gap-2 max-w-[85%] mr-auto">
                   <div className="shrink-0 w-8 h-8 rounded-full bg-surface-light text-accent border border-border flex items-center justify-center">
                     <Bot className="w-4 h-4" />
                   </div>
                   <div className="p-3 rounded-2xl text-sm bg-surface-light text-text-primary border border-border rounded-tl-none flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-text-secondary" />
-                    <span className="text-text-secondary">Thinking...</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                    <span className="text-text-secondary font-medium tracking-tight flex gap-1">
+                      {activeAgent} <span className="animate-pulse">is thinking...</span>
+                    </span>
                   </div>
                 </div>
               )}
