@@ -6,6 +6,8 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Loader2 } from "lucide-react";
+import { NotificationProvider } from "@/components/providers/NotificationProvider";
+import { SupervisorChat } from "@/components/SupervisorChat";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isOnboarded, accessToken, fetchMe } = useAuthStore();
@@ -63,14 +65,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto pb-16 md:pb-0 relative">
-        <div className="max-w-7xl mx-auto p-4 md:p-8">
-          {children}
-        </div>
-      </main>
-      <MobileNav />
-    </div>
+    <NotificationProvider>
+      <div className="flex h-dvh overflow-hidden bg-background">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0 relative">
+          <div className="max-w-7xl mx-auto p-4 md:p-8">
+            {children}
+          </div>
+        </main>
+        <SupervisorChat />
+        <MobileNav />
+      </div>
+    </NotificationProvider>
   );
 }
