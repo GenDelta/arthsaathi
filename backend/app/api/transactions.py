@@ -134,8 +134,9 @@ async def get_breakdown(
         params.extend([start_date, start_date])
 
     if end_date:
+        end_dt_full = end_date + "T23:59:59"
         clauses.append("(occurred_at <= ? OR (occurred_at IS NULL AND created_at <= ?))")
-        params.extend([end_date, end_date + "T23:59:59"])
+        params.extend([end_dt_full, end_dt_full])
 
     where = " AND ".join(clauses)
     
@@ -207,10 +208,9 @@ async def list_transactions(
         params.extend([start_date, start_date])
 
     if end_date:
-        # occurred_at is YYYY-MM-DD — compare directly (SQLite string compare works)
-        # created_at is ISO timestamp — append end-of-day suffix
+        end_dt_full = end_date + "T23:59:59"
         clauses.append("(occurred_at <= ? OR (occurred_at IS NULL AND created_at <= ?))")
-        params.extend([end_date, end_date + "T23:59:59"])
+        params.extend([end_dt_full, end_dt_full])
 
     where = " AND ".join(clauses)
 
