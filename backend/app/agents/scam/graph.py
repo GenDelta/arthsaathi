@@ -23,6 +23,7 @@ class ScamScanState(TypedDict):
     matched_clauses: list[dict[str, Any]]
     risk_score: float | None
     risk_summary: str | None
+    lender_name: str | None
     language: str | None                 # user language preference (e.g. "hi", "mr", "en")
 
 
@@ -140,7 +141,8 @@ async def summarize_node(state: ScamScanState) -> ScamScanState:
             return {
                 **state,
                 "risk_summary": data.get("risk_summary", "Summary unavailable."),
-                "risk_score": float(data.get("risk_score", 0.0))
+                "risk_score": float(data.get("risk_score", 0.0)),
+                "lender_name": data.get("lender_name")
             }
         except json.JSONDecodeError:
             pass

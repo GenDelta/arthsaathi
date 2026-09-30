@@ -245,3 +245,115 @@ async def get_nudges(
         ))
 
     return NudgesResponse(nudges=nudges)
+import asyncio
+import json
+from typing import AsyncGenerator
+from fastapi.responses import StreamingResponse
+
+# In-memory pubsub for SSE (Map of user_id -> list of queues)
+_user_queues: dict[str, list[asyncio.Queue]] = {}
+
+def push_guardian_alert(user_id: str, alert: dict):
+    """Push an alert to all active SSE connections for a user."""
+    if user_id in _user_queues:
+        for q in _user_queues[user_id]:
+            q.put_nowait(alert)
+
+@router.get("/stream")
+async def stream_guardian_alerts(ctx: TenantContext = Depends(get_tenant_context)):
+    """SSE endpoint for real-time background Guardian alerts."""
+    q = asyncio.Queue()
+    if ctx.user_id not in _user_queues:
+        _user_queues[ctx.user_id] = []
+    _user_queues[ctx.user_id].append(q)
+    
+    async def event_stream() -> AsyncGenerator[str, None]:
+        try:
+            while True:
+                # Wait for a new alert to be pushed
+                alert = await q.get()
+                yield f"data: {json.dumps(alert)}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if ctx.user_id in _user_queues and q in _user_queues[ctx.user_id]:
+                _user_queues[ctx.user_id].remove(q)
+                
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+async def run_background_guardian_checks(user_id: str):
+    """
+    Background worker that runs async checks after a transaction is logged.
+    Rules:
+    1. Fraud Check (match flagged_entities)
+    2. High Spend Check (spending > 120% of income in last 7 days)
+    3. Stale Debt Check (no repayment > 60 days)
+    """
+    db_path = get_settings().database_path
+    
+    try:
+        async with aiosqlite.connect(db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            
+            # 1. Stale Debt Check
+            # Check tracked debts where there is no EXPENSE transaction matching the entity in the last 60 days
+            sixty_days_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+            
+            c = await conn.execute("SELECT id, entity_name FROM tracked_debts WHERE user_id = ?", (user_id,))
+            tracked = await c.fetchall()
+            
+            for tr in tracked:
+                entity = tr["entity_name"]
+                
+                # Check for recent payment
+                c_pay = await conn.execute(
+                    "SELECT 1 FROM transactions WHERE user_id = ? AND type = 'EXPENSE' AND LOWER(description) LIKE ? AND (occurred_at >= ? OR (occurred_at IS NULL AND created_at >= ?)) LIMIT 1",
+                    (user_id, f"%{entity.lower()}%", sixty_days_ago, sixty_days_ago)
+                )
+                has_recent = await c_pay.fetchone()
+                
+                if not has_recent:
+                    push_guardian_alert(user_id, {
+                        "type": "STALE_DEBT",
+                        "title": "Stale Debt Warning",
+                        "message": f"You haven't logged any repayments to {entity} in over 2 months. Consider making a small payment to avoid penalties."
+                    })
+            
+            # 2. Fraud Check against flagged entities
+            c_flag = await conn.execute("SELECT entity_name FROM flagged_entities WHERE user_id = ?", (user_id,))
+            flagged = await c_flag.fetchall()
+            if flagged:
+                flagged_names = [f["entity_name"].lower() for f in flagged]
+                
+                # Check last 10 transactions
+                c_tx = await conn.execute("SELECT description, amount FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10", (user_id,))
+                recent_txs = await c_tx.fetchall()
+                
+                for tx in recent_txs:
+                    desc = (tx["description"] or "").lower()
+                    for fname in flagged_names:
+                        if fname in desc:
+                            push_guardian_alert(user_id, {
+                                "type": "FRAUD_ALERT",
+                                "title": "Predatory Lender Detected",
+                                "message": f"A recent transaction (₹{tx['amount']}) matched a flagged predatory lender ({fname.title()}). Please be cautious!"
+                            })
+                            break
+
+            # 3. High Spend Check
+            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            c_high = await conn.execute(
+                "SELECT SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END) as inc, SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END) as exp FROM transactions WHERE user_id = ? AND (occurred_at >= ? OR (occurred_at IS NULL AND created_at >= ?))",
+                (user_id, seven_days_ago, seven_days_ago)
+            )
+            r_high = await c_high.fetchone()
+            inc = r_high["inc"] or 0
+            exp = r_high["exp"] or 0
+            if exp > 0 and inc > 0 and (exp > inc * 1.2):
+                push_guardian_alert(user_id, {
+                    "type": "HIGH_SPEND_ALERT",
+                    "title": "High Spending Detected",
+                    "message": f"Warning: You have spent ₹{exp} recently, which is {(exp/inc)*100:.0f}% of your recent income. Consider slowing down expenses."
+                })
+    except Exception as e:
+        logger.error(f"Background Guardian Check failed: {e}")

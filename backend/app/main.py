@@ -59,10 +59,11 @@ def create_app() -> FastAPI:
     application.include_router(profile.router, prefix="/api")
     application.include_router(schemes.router, prefix="/api")
     # Phase 3: Transactions & Insights
-    from app.api import guardian, transactions, katha
+    from app.api import guardian, transactions, katha, supervisor
     application.include_router(transactions.router, prefix="/api")
     application.include_router(guardian.router, prefix="/api")
     application.include_router(katha.router, prefix="/api")
+    application.include_router(supervisor.router, prefix="/api")
     # Future phases — registered here as each phase completes:
     # from app.api import documents, nudges, ngo, notifications
     # application.include_router(documents.router, prefix="/api")

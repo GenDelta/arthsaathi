@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, BackgroundTasks
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -262,6 +262,7 @@ async def list_transactions(
 async def upload_pdf(
     file: UploadFile = File(...),
     password: str | None = Form(default=None),
+    background_tasks: BackgroundTasks = None,
     ctx: TenantContext = Depends(get_tenant_context),  # noqa: B008
 ) -> UploadPdfResponse:
     """Parse a bank-statement PDF and persist extracted transactions."""
@@ -329,6 +330,10 @@ async def upload_pdf(
         await conn.commit()
 
     logger.info("PDF upload: inserted %d transactions for user %s", len(inserted_txs), ctx.user_id)
+    if background_tasks:
+        from app.api.guardian import run_background_guardian_checks
+        background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
+
     return UploadPdfResponse(inserted=len(inserted_txs), transactions=inserted_txs)
 
 
@@ -388,6 +393,7 @@ def _normalise_category(raw: str, tx_type: str) -> str:
 @router.post("/voice", response_model=VoiceResponse)
 async def voice_transaction(
     body: VoiceRequest,
+    background_tasks: BackgroundTasks,
     ctx: TenantContext = Depends(get_tenant_context),  # noqa: B008
 ) -> VoiceResponse:
     """Convert a natural-language voice entry to a transaction using an LLM."""
@@ -440,6 +446,10 @@ async def voice_transaction(
             (tx_id, ctx.user_id, tx_type, category, amount, description, now, now),
         )
         await conn.commit()
+
+    # Trigger background async checks
+    from app.api.guardian import run_background_guardian_checks
+    background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
 
     tx_out = TransactionOut(
         id=tx_id,

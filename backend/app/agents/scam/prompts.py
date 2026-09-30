@@ -20,7 +20,8 @@ Your task:
 You must reply in JSON format exactly matching this schema:
 {{
     "risk_summary": "Your detailed explanation here...",
-    "risk_score": 0.85
+    "risk_score": 0.85,
+    "lender_name": "The name of the entity, app, or lender (or null if not found)"
 }}
 
 User Language: {language}
