@@ -53,6 +53,9 @@ async def chat_with_supervisor(
                     # Send an event to the frontend showing which agent is spinning up
                     yield f"data: {json.dumps({'type': 'agent_activity', 'node': node_name})}\n\n"
                     
+                    if "client_action" in state_update and state_update["client_action"]:
+                        yield f"data: {json.dumps({'type': 'action', 'action': state_update['client_action']['type'], 'path': state_update['client_action'].get('path')})}\n\n"
+                    
                     # If this is the final guard node, we can output the final response
                     if node_name == "output_guard":
                         final_res = state_update.get("final_response")

@@ -121,15 +121,24 @@ async def transaction_agent_node(state: ArthSaathiState) -> dict:
 
 async def katha_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Katha Mode routing."""
-    return {"final_response": "Redirecting you to Katha Mode for a story on that."}
+    return {
+        "final_response": "Redirecting you to Katha Mode for a story on that.",
+        "client_action": {"type": "navigate", "path": "/katha"}
+    }
 
 async def scheme_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Matchmaker routing."""
-    return {"final_response": "Let me check the welfare schemes you qualify for."}
+    return {
+        "final_response": "Let me check the welfare schemes you qualify for.",
+        "client_action": {"type": "navigate", "path": "/schemes"}
+    }
 
 async def scam_agent_node(state: ArthSaathiState) -> dict:
     """Mock node for Scam Scanner routing."""
-    return {"final_response": "I will scan that for predatory clauses."}
+    return {
+        "final_response": "I will redirect you to the Scam Scanner.",
+        "client_action": {"type": "navigate", "path": "/scam-scanner"}
+    }
 
 async def general_agent_node(state: ArthSaathiState) -> dict:
     """Handle general chitchat."""

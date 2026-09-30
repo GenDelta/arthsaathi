@@ -19,3 +19,4 @@ class ArthSaathiState(TypedDict):
     
     # Final safe output to return to user
     final_response: str | None
+    client_action: dict[str, str] | None

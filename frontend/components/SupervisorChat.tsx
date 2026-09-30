@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, Send, Loader2, Bot, User, Mic } from "lucide-react";
@@ -10,6 +11,7 @@ type Message = { id: string; role: "user" | "bot"; text: string };
 
 export function SupervisorChat() {
   const { accessToken } = useAuthStore();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -96,8 +98,13 @@ export function SupervisorChat() {
                   ...prev,
                   { id: Date.now().toString(), role: "bot", text: data.response },
                 ]);
-              } else if (data.type === "action" && data.action === "transaction_logged") {
-                window.dispatchEvent(new CustomEvent("refresh_transactions"));
+              } else if (data.type === "action") {
+                if (data.action === "transaction_logged") {
+                  window.dispatchEvent(new CustomEvent("refresh_transactions"));
+                } else if (data.action === "navigate" && data.path) {
+                  router.push(data.path);
+                  setIsOpen(false);
+                }
               }
             } catch (e) {}
           }
