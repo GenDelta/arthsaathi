@@ -56,17 +56,16 @@ async def chat_with_supervisor(
                     if "client_action" in state_update and state_update["client_action"]:
                         yield f"data: {json.dumps({'type': 'action', 'action': state_update['client_action']['type'], 'path': state_update['client_action'].get('path')})}\n\n"
                     
+                    if state_update.get("extracted_transaction"):
+                        yield f"data: {json.dumps({'type': 'action', 'action': 'transaction_logged'})}\n\n"
+                        from app.api.guardian import run_background_guardian_checks
+                        background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
+                    
                     # If this is the final guard node, we can output the final response
                     if node_name == "output_guard":
                         final_res = state_update.get("final_response")
                         if final_res:
                             yield f"data: {json.dumps({'type': 'final_response', 'response': final_res})}\n\n"
-                            
-                        # Handle background triggers
-                        if state_update.get("extracted_transaction"):
-                            yield f"data: {json.dumps({'type': 'action', 'action': 'transaction_logged'})}\n\n"
-                            from app.api.guardian import run_background_guardian_checks
-                            background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
             
             # End of stream
             yield "data: [DONE]\n\n"
