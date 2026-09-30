@@ -35,8 +35,12 @@ export function SupervisorChat() {
   }, [messages]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeAgent]);
+    if (isOpen) {
+      setTimeout(() => {
+        endRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [messages, activeAgent, isOpen]);
 
   const handleSend = async () => {
     if (!input.trim() || !accessToken) return;

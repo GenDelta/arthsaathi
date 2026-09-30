@@ -175,7 +175,7 @@ export function RecentTransactions({ refresh = 0, start_date, end_date }: Recent
       })
       .catch((err) => setError(err.message || "Failed to load transactions"))
       .finally(() => setLoading(false));
-  }, [accessToken, typeFilter, page, start_date, end_date]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessToken, typeFilter, page, start_date, end_date, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
