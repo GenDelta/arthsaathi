@@ -214,6 +214,7 @@ export interface TransactionsResponse {
 export interface TransactionFilters {
   type?: "INCOME" | "EXPENSE" | "all";
   category?: string;
+  query?: string;
   start_date?: string;
   end_date?: string;
   page?: number;
@@ -257,6 +258,7 @@ export const transactionsApi = {
     const params = new URLSearchParams();
     if (filters?.type && filters.type !== "all") params.set("type", filters.type);
     if (filters?.category) params.set("category", filters.category);
+    if (filters?.query) params.set("query", filters.query);
     if (filters?.start_date) params.set("start_date", filters.start_date);
     if (filters?.end_date) params.set("end_date", filters.end_date);
     if (filters?.page) params.set("page", String(filters.page));
@@ -337,4 +339,16 @@ export const guardianApi = {
       headers: { Authorization: `Bearer ${token}` },
     });
   },
+
+  async trackDebt(
+    token: string,
+    entity_name: string,
+    total_amount: number
+  ): Promise<{ success: boolean; id: string }> {
+    return request<{ success: boolean; id: string }>("/api/guardian/track-debt", {
+      method: "POST",
+      body: JSON.stringify({ entity_name, total_amount }),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
 };

@@ -176,6 +176,7 @@ async def get_breakdown(
 async def list_transactions(
     type: str | None = Query(default=None, description="INCOME | EXPENSE | all"),  # noqa: A002
     category: str | None = Query(default=None),
+    query: str | None = Query(default=None, description="Search transaction descriptions"),
     start_date: str | None = Query(default=None, description="YYYY-MM-DD"),
     end_date: str | None = Query(default=None, description="YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
@@ -195,6 +196,10 @@ async def list_transactions(
     if category:
         clauses.append("category = ?")
         params.append(category.upper())
+
+    if query:
+        clauses.append("LOWER(description) LIKE ?")
+        params.append(f"%{query.lower()}%")
 
     # Filter by occurred_at (ISO YYYY-MM-DD stored by parser) with created_at fallback
     if start_date:

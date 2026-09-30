@@ -32,7 +32,39 @@ class Nudge(BaseModel):
 class NudgesResponse(BaseModel):
     nudges: list[Nudge]
 
+class TrackDebtRequest(BaseModel):
+    entity_name: str
+    total_amount: float
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
+
+@router.post("/track-debt")
+async def track_debt(
+    req: TrackDebtRequest,
+    ctx: TenantContext = Depends(get_tenant_context)  # noqa: B008
+):
+    """Start tracking a specific informal or formal debt entity."""
+    import uuid
+    db_path = get_settings().database_path
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tracked_debts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                entity_name TEXT NOT NULL,
+                total_amount REAL NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        debt_id = str(uuid.uuid4())
+        await conn.execute(
+            "INSERT INTO tracked_debts (id, user_id, entity_name, total_amount, created_at) VALUES (?, ?, ?, ?, ?)",
+            (debt_id, ctx.user_id, req.entity_name, req.total_amount, datetime.utcnow().isoformat())
+        )
+        await conn.commit()
+    return {"success": True, "id": debt_id}
 
 @router.get("/nudges", response_model=NudgesResponse)
 async def get_nudges(
@@ -94,6 +126,61 @@ async def get_nudges(
         )
         row_debt = await c_debt.fetchone()
         debt = row_debt["debt"]
+
+        # Query: Specific Tracked Debts
+        # Ensure tracked_debts table exists first (in case track_debt hasn't been called)
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tracked_debts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                entity_name TEXT NOT NULL,
+                total_amount REAL NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        c_tracked = await conn.execute(
+            "SELECT id, entity_name, total_amount FROM tracked_debts WHERE user_id = ?",
+            (ctx.user_id,)
+        )
+        tracked_rows = await c_tracked.fetchall()
+        
+        tracked_progress = []
+        for tr in tracked_rows:
+            entity = tr["entity_name"]
+            # Total paid all time
+            c_tot = await conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) as paid FROM transactions WHERE user_id = ? AND type = 'EXPENSE' AND LOWER(description) LIKE ?",
+                (ctx.user_id, f"%{entity.lower()}%")
+            )
+            r_tot = await c_tot.fetchone()
+            
+            # Total paid in this period
+            c_per = await conn.execute(
+                f"SELECT COALESCE(SUM(amount), 0) as paid FROM transactions WHERE type = 'EXPENSE' AND LOWER(description) LIKE ? AND {where}",
+                [f"%{entity.lower()}%"] + params
+            )
+            r_per = await c_per.fetchone()
+            
+            tracked_progress.append({
+                "id": tr["id"],
+                "entity": entity,
+                "target": tr["total_amount"],
+                "paid_total": r_tot["paid"],
+                "paid_period": r_per["paid"]
+            })
+
+    # Rule 0: Tracked Debts
+    for tp in tracked_progress:
+        pct = (tp["paid_total"] / tp["target"]) * 100 if tp["target"] > 0 else 0
+        nudges.append(Nudge(
+            id=f"tracked_debt_{tp['id']}",
+            type="INFO",
+            title=f"Debt Progress: {tp['entity'].title()}",
+            message=f"You've paid ₹{tp['paid_period']:,.0f} to {tp['entity'].title()} in this period. Overall progress: ₹{tp['paid_total']:,.0f} / ₹{tp['target']:,.0f} ({pct:.0f}%).",
+            actionLabel="View Details"
+        ))
 
     # Rule 1: High Spending Alert (Expenses > 70% of income)
     if inc > 0 and exp > (0.7 * inc):

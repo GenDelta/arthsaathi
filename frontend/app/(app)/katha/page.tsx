@@ -5,6 +5,8 @@ import { ChatInput } from "./components/ChatInput";
 import { StoryMessage } from "./components/StoryMessage";
 import { BookOpen } from "lucide-react";
 
+import { useAuthStore } from "@/store/useAuthStore";
+
 type Message = { id: string; role: "user" | "storyteller"; content: string };
 
 const SUGGESTIONS = [
@@ -14,27 +16,68 @@ const SUGGESTIONS = [
 ];
 
 export default function KathaPage() {
+  const { accessToken } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const handleSend = (text: string) => {
-    if (!text.trim()) return;
+  const handleSend = async (text: string) => {
+    if (!text.trim() || !accessToken) return;
     
     setMessages(prev => [...prev, { id: Date.now().toString(), role: "user", content: text }]);
     setIsStreaming(true);
 
-    // Mock streaming delay
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev, 
-        { 
-          id: (Date.now() + 1).toString(), 
-          role: "storyteller", 
-          content: "Imagine you are planting a mango tree. The first year, it bears 10 fruits. If you save the seeds and plant them alongside the original, the next year you have 20. Then 40. This is compound interest—your money earning money on itself over time, growing an orchard from a single seed." 
+    const storyId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, { id: storyId, role: "storyteller", content: "" }]);
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/katha/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ message: text })
+      });
+
+      if (!res.ok) throw new Error("Stream failed");
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (reader) {
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || ""; // Keep the incomplete line in the buffer
+          
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const dataStr = line.replace("data: ", "");
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.text) {
+                  setMessages(prev => prev.map(m => 
+                    m.id === storyId ? { ...m, content: m.content + data.text } : m
+                  ));
+                }
+              } catch (e) {
+                console.error("SSE parse error", e);
+              }
+            }
+          }
         }
-      ]);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev.filter(m => m.id !== storyId), { 
+        id: storyId, role: "storyteller", content: "I'm sorry, I couldn't fetch a story right now." 
+      }]);
+    } finally {
       setIsStreaming(false);
-    }, 1500);
+    }
   };
 
   return (
