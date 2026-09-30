@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { ChatInput } from "./components/ChatInput";
 import { StoryMessage } from "./components/StoryMessage";
 import { BookOpen } from "lucide-react";
@@ -20,25 +20,25 @@ function KathaChat() {
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [initialized, setInitialized] = useState(false);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    if (!initialized && accessToken) {
-      setInitialized(true);
+    if (!initialized.current && accessToken) {
+      initialized.current = true;
       const q = searchParams.get("q");
       if (q) {
         handleSend(q);
       }
     }
-  }, [searchParams, accessToken, initialized]);
+  }, [searchParams, accessToken]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || !accessToken) return;
     
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: "user", content: text }]);
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: "user", content: text }]);
     setIsStreaming(true);
 
-    const storyId = (Date.now() + 1).toString();
+    const storyId = crypto.randomUUID();
     setMessages(prev => [...prev, { id: storyId, role: "storyteller", content: "" }]);
 
     try {
@@ -144,10 +144,12 @@ function KathaChat() {
   );
 }
 
-export default function KathaPage() {
+const KathaPage = () => {
   return (
     <Suspense fallback={<div className="p-8 text-center text-text-secondary">Loading Katha Mode...</div>}>
       <KathaChat />
     </Suspense>
   );
-}
+};
+
+export default KathaPage;

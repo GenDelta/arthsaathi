@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import { User, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface StoryMessageProps {
   message: {
@@ -27,12 +28,27 @@ export function StoryMessage({ message }: StoryMessageProps) {
         isUser ? "items-end" : "items-start"
       )}>
         <div className={cn(
-          "px-4 py-3 rounded-2xl text-sm leading-relaxed",
+          "px-4 py-3 rounded-2xl text-sm leading-relaxed max-w-none",
           isUser 
             ? "bg-[#222] text-text-primary rounded-tr-sm" 
             : "bg-surface border border-border text-text-primary rounded-tl-sm"
         )}>
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown 
+              components={{
+                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                strong: ({node, ...props}) => <strong className="font-semibold text-accent" {...props} />,
+                ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
+                ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
+                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-3 mb-1 text-accent" {...props} />,
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
         </div>
       </div>
     </div>
