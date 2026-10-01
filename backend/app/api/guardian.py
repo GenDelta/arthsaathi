@@ -272,7 +272,7 @@ async def stream_guardian_alerts(request: Request, ctx: TenantContext = Depends(
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
             while True:
-                if await request.is_disconnected():
+                if await request.is_disconnected() or getattr(request.app.state, 'is_shutting_down', False):
                     break
                 try:
                     # Timeout periodically to check disconnection

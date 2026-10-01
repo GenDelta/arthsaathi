@@ -30,8 +30,13 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+from datetime import datetime, timezone, timedelta
+
 def _utcnow() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    # Use IST (UTC+5:30) so string comparisons with YYYY-MM-DD work correctly
+    # for Indian gig workers, aligning with frontend's local date filters.
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(tz=ist).isoformat()
 
 
 def _new_id() -> str:

@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.is_shutting_down = False
+    yield
+    app.state.is_shutting_down = True
+
 def create_app() -> FastAPI:
     """Factory function that creates and configures the FastAPI application."""
     application = FastAPI(
@@ -26,6 +34,7 @@ def create_app() -> FastAPI:
         description="Multi-agent financial-literacy platform for gig and agricultural workers.",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # ─── CORS ─────────────────────────────────────────────────────────────────

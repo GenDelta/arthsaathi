@@ -93,7 +93,9 @@ async def transaction_agent_node(state: ArthSaathiState) -> dict:
         category = _normalise_category(str(extracted.get("category", "OTHER")), tx_type)
         
         db_path = get_settings().database_path
-        now = datetime.now(timezone.utc).isoformat()
+        from datetime import timedelta
+        ist = timezone(timedelta(hours=5, minutes=30))
+        now = datetime.now(ist).isoformat()
         tx_id = str(uuid.uuid4())
         
         async with aiosqlite.connect(db_path) as conn:
