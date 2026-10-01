@@ -113,8 +113,9 @@ async def get_nudges(
         clauses.append("(occurred_at >= ? OR (occurred_at IS NULL AND created_at >= ?))")
         params.extend([start_date, start_date])
     if end_date:
+        end_dt_full = end_date + "T23:59:59"
         clauses.append("(occurred_at <= ? OR (occurred_at IS NULL AND created_at <= ?))")
-        params.extend([end_date, end_date + "T23:59:59"])
+        params.extend([end_dt_full, end_dt_full])
 
     where = " AND ".join(clauses)
     
