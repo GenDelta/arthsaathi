@@ -7,10 +7,13 @@ USER PROFILE:
 BEHAVIORAL CONTEXT:
 {behavioral_summary}
 
+{query_section}
+
 CANDIDATE SCHEMES:
 {candidates}
 
 Prioritize schemes that offer immediate cash assistance, land support, housing, or direct benefits relevant to the user's occupation and income level.
+If a specific request was provided, prioritize schemes that directly address that request.
 Return ONLY a JSON array of the top 5 scheme IDs, ordered best-first. Example: [12, 45, 8, 33, 7]
 """
 

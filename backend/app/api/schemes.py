@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import aiosqlite
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -12,11 +12,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/schemes", tags=["schemes"])
 
+class MatchRequest(BaseModel):
+    query: str = ""
+
 class MatchResponse(BaseModel):
     schemes: List[dict]
 
 @router.post("/match", response_model=MatchResponse)
-async def match_schemes(ctx: TenantContext = Depends(get_tenant_context)) -> MatchResponse:
+async def match_schemes(req: MatchRequest, ctx: TenantContext = Depends(get_tenant_context)) -> MatchResponse:
     db_path = get_settings().database_path
     
     # Fetch user profile
@@ -32,6 +35,7 @@ async def match_schemes(ctx: TenantContext = Depends(get_tenant_context)) -> Mat
     state = {
         "user_profile": profile,
         "behavioral_summary": "Standard risk profile.", # In phase 4, this comes from flagged_entities
+        "query": req.query,
         "central_candidates": [],
         "state_candidates": [],
         "final_schemes": []

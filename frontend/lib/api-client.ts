@@ -174,9 +174,10 @@ export interface SchemeMatch {
 }
 
 export const schemesApi = {
-  async match(token: string): Promise<{ schemes: SchemeMatch[] }> {
+  async match(token: string, query?: string): Promise<{ schemes: SchemeMatch[] }> {
     return request<{ schemes: SchemeMatch[] }>("/api/schemes/match", {
       method: "POST",
+      body: JSON.stringify({ query: query || "" }),
       headers: { Authorization: `Bearer ${token}` },
     });
   }

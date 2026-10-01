@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { SchemeCard } from "./components/SchemeCard";
 import { Badge } from "@/components/ui/Badge";
-import { Filter, Loader2, Sparkles, User, Briefcase } from "lucide-react";
+import { Filter, Loader2, Sparkles, User, Briefcase, Search } from "lucide-react";
 import { schemesApi, profileApi, SchemeMatch, ProfileResponse } from "@/lib/api-client";
 import { useAuthStore } from "@/store/useAuthStore";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { useSearchParams } from "next/navigation";
 
-export default function SchemesPage() {
+function SchemesContent() {
   const { accessToken } = useAuthStore();
+  const searchParams = useSearchParams();
+  const q = searchParams.get("q") || undefined;
+  
   const [schemes, setSchemes] = useState<SchemeMatch[]>([]);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,7 +22,7 @@ export default function SchemesPage() {
     if (!accessToken) return;
     
     Promise.all([
-      schemesApi.match(accessToken),
+      schemesApi.match(accessToken, q),
       profileApi.getProfile(accessToken)
     ])
     .then(([schemesData, profileData]) => {
@@ -27,7 +31,7 @@ export default function SchemesPage() {
     })
     .catch(console.error)
     .finally(() => setLoading(false));
-  }, [accessToken]);
+  }, [accessToken, q]);
 
   if (loading) {
     return (
@@ -54,6 +58,17 @@ export default function SchemesPage() {
           </p>
         </div>
       </div>
+
+      {q && (
+        <SurfaceCard className="p-4 border-amber-500/20 bg-amber-500/5">
+          <div className="flex items-center gap-3 text-amber-500">
+            <Search size={20} />
+            <p className="font-medium">
+              Targeted Search: <span className="text-text-primary font-normal">"{q}"</span>
+            </p>
+          </div>
+        </SurfaceCard>
+      )}
 
       {profile && (
         <SurfaceCard className="p-4 flex flex-wrap gap-x-8 gap-y-4 bg-accent/5 border-accent/20">
@@ -91,4 +106,14 @@ export default function SchemesPage() {
     </div>
   );
 }
+
+const SchemesPage = () => {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-text-secondary">Loading matchmaker...</div>}>
+      <SchemesContent />
+    </Suspense>
+  );
+};
+
+export default SchemesPage;
 

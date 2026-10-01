@@ -18,7 +18,7 @@ def _get_lancedb_table():
     db = lancedb.connect(str(get_settings().lancedb_path))
     return db.open_table("schemes_vectors")
 
-def _get_user_embedding(profile: dict, focus: str = "general") -> list:
+def _get_user_embedding(profile: dict, focus: str = "general", explicit_query: str = "") -> list:
     from langchain_huggingface import HuggingFaceEmbeddings
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     
@@ -46,14 +46,14 @@ def _get_user_embedding(profile: dict, focus: str = "general") -> list:
         # Emphasise occupation and national schemes, drop state name
         query = (
             f"central government national scheme benefit welfare assistance {gender} {age_str} "
-            f"{emp_type} worker {occupation} India income support subsidy {pain_points}"
+            f"{emp_type} worker {occupation} India income support subsidy {pain_points} {explicit_query}"
         ).strip()
     else:
         # Emphasise state and local context
         query = (
             f"government scheme benefit welfare assistance {gender} {age_str} "
             f"{emp_type} worker {occupation} {state} "
-            f"income support subsidy {pain_points}"
+            f"income support subsidy {pain_points} {explicit_query}"
         ).strip()
     
     return embeddings.embed_query(query)
@@ -62,7 +62,8 @@ async def central_retrieval_node(state: MatchmakerState):
     profile = state.get("user_profile", {})
     try:
         table = _get_lancedb_table()
-        query_vec = _get_user_embedding(profile, focus="central")
+        query_val = state.get("query", "")
+        query_vec = _get_user_embedding(profile, focus="central", explicit_query=query_val)
         results = table.search(query_vec).limit(50).to_list()
         
         db_path = get_settings().database_path
@@ -91,7 +92,8 @@ async def state_retrieval_node(state: MatchmakerState):
     
     try:
         table = _get_lancedb_table()
-        query_vec = _get_user_embedding(profile, focus="state")
+        query_val = state.get("query", "")
+        query_vec = _get_user_embedding(profile, focus="state", explicit_query=query_val)
         results = table.search(query_vec).limit(60).to_list()
         
         db_path = get_settings().database_path
@@ -130,9 +132,13 @@ async def consensus_node(state: MatchmakerState):
     for c in all_candidates:
         candidates_text += f"ID: {c['id']} | Name: {c['scheme_name']} | Benefits: {c['benefits']}\n"
         
+    query_val = state.get("query", "").strip()
+    query_section = f"USER EXPLICIT REQUEST:\n{query_val}" if query_val else ""
+
     prompt = RERANK_PROMPT.format(
         profile=json.dumps(state.get("user_profile", {})),
         behavioral_summary=state.get("behavioral_summary", "None"),
+        query_section=query_section,
         candidates=candidates_text
     )
     
