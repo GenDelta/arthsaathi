@@ -208,6 +208,12 @@ async def get_nudges(
                 "paid_period": r_per["paid"]
             })
 
+        c_feed = await conn.execute(
+            "SELECT action FROM nudge_feedback WHERE user_id = ? AND nudge_type = 'MICRO_SAVINGS' ORDER BY created_at DESC LIMIT 5",
+            (ctx.user_id,)
+        )
+        recent_feedback = await c_feed.fetchall()
+
     # Rule 0: Tracked Debts
     for tp in tracked_progress:
         pct = (tp["paid_total"] / tp["target"]) * 100 if tp["target"] > 0 else 0
@@ -248,12 +254,6 @@ async def get_nudges(
         # Calibration Agent Logic: Determine current savings target based on feedback
         target_pct = 0.05
         is_muted = False
-        
-        c_feed = await conn.execute(
-            "SELECT action FROM nudge_feedback WHERE user_id = ? AND nudge_type = 'MICRO_SAVINGS' ORDER BY created_at DESC LIMIT 5",
-            (ctx.user_id,)
-        )
-        recent_feedback = await c_feed.fetchall()
         
         if recent_feedback:
             # If the last 3 interactions were DISMISS, user is fatigued. 
