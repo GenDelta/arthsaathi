@@ -271,14 +271,14 @@ async def get_nudges(
             elif dismiss_streak >= 3:
                 target_pct = 0.02  # Lower the target to 2% to make it achievable
                 
-        if not is_muted and 0 <= savings_rate < target_pct and not any(n.id == "high_spend_period" for n in nudges):
+        if not is_muted and savings_rate < target_pct:
             disp_target = int(target_pct * 100)
             nudges.append(Nudge(
                 id="low_savings_period",
                 type="MICRO_SAVINGS",
                 title="Boost Your Savings",
                 message=f"Your savings rate is looking a bit low ({(savings_rate*100):.1f}%). Try to save at least {disp_target}% of your ₹{inc:,.0f} income.",
-                actionLabel="Save Now"
+                actionLabel="Review Expenses"
             ))
             
     # Rule 4: Debt tracking

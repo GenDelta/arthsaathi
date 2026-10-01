@@ -49,11 +49,11 @@ export function GuardianNudges({ refresh = 0, start_date, end_date }: GuardianNu
   }
 
   function handleAction(nudge: Nudge) {
-    if (nudge.id === "dry_spell_period" || nudge.id === "low_savings_period") {
+    if (nudge.id === "dry_spell_period") {
       router.push("/schemes");
     } else if (nudge.id === "welcome_log") {
       document.getElementById("pdf-upload")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    } else if (nudge.id === "debt_track_period" || nudge.id === "high_spend_period" || nudge.id.startsWith("tracked_debt_")) {
+    } else if (nudge.id === "debt_track_period" || nudge.id === "high_spend_period" || nudge.id === "low_savings_period" || nudge.id.startsWith("tracked_debt_")) {
       // Open Robust Deep Dive Modal
       setActiveInsight(nudge);
       setInsightLoading(true);
