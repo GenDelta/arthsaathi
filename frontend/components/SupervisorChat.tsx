@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, Send, Loader2, Bot, User, Mic } from "lucide-react";
 import { Button } from "./ui/Button";
+import ReactMarkdown from "react-markdown";
 
 type Message = { id: string; role: "user" | "bot"; text: string };
 
@@ -194,10 +195,25 @@ export function SupervisorChat() {
                     className={`p-3 rounded-2xl text-sm ${
                       msg.role === "user"
                         ? "bg-accent/10 text-text-primary border border-accent/20 rounded-tr-none"
-                        : "bg-surface-light text-text-primary border border-border rounded-tl-none"
+                        : "bg-surface-light text-text-primary border border-border rounded-tl-none prose prose-invert max-w-none prose-p:leading-relaxed"
                     }`}
                   >
-                    {msg.text}
+                    {msg.role === "user" ? (
+                      msg.text
+                    ) : (
+                      <ReactMarkdown
+                        components={{
+                          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                          strong: ({node, ...props}) => <strong className="font-semibold text-accent" {...props} />,
+                          ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
+                          ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
+                          li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                          h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-2 mb-1 text-accent" {...props} />,
+                        }}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
+                    )}
                   </div>
                 </div>
               ))}

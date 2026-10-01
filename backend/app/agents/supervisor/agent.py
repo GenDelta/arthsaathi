@@ -150,7 +150,7 @@ async def scam_agent_node(state: ArthSaathiState) -> dict:
 async def general_agent_node(state: ArthSaathiState) -> dict:
     """Handle general chitchat."""
     llm = get_llm(temperature=0.6)
-    sys_msg = "You are ArthSaathi, a friendly financial assistant for Indian gig workers."
+    sys_msg = "You are ArthSaathi, a friendly financial assistant for Indian gig workers. Keep your responses highly concise, strictly under 3-4 sentences, and use simple markdown for readability."
     res = await llm.ainvoke([SystemMessage(content=sys_msg)] + list(state["messages"]))
     return {"final_response": res.content}
 
