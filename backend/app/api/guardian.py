@@ -38,6 +38,35 @@ class TrackDebtRequest(BaseModel):
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
+class NudgeFeedbackRequest(BaseModel):
+    nudge_id: str
+    nudge_type: str
+    action: str  # "DISMISS" | "ACCEPT"
+
+@router.post("/feedback")
+async def submit_nudge_feedback(
+    req: NudgeFeedbackRequest,
+    ctx: TenantContext = Depends(get_tenant_context)
+):
+    """Log user interaction (dismiss/accept) with a nudge for calibration."""
+    import uuid
+    from datetime import datetime, timezone
+    
+    db_path = get_settings().database_path
+    now = datetime.now(timezone.utc).isoformat()
+    feedback_id = str(uuid.uuid4())
+    
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            """
+            INSERT INTO nudge_feedback (id, user_id, nudge_type, action, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (feedback_id, ctx.user_id, req.nudge_type, req.action, now)
+        )
+        await conn.commit()
+    return {"success": True}
+
 @router.post("/track-debt")
 async def track_debt(
     req: TrackDebtRequest,
@@ -211,16 +240,44 @@ async def get_nudges(
             actionLabel="View Schemes"
         ))
         
-    # Rule 3: Low Savings Rate (< 5%)
+    # Rule 3: Low Savings Rate (Calibrated via Nudge Feedback)
     if inc > 0:
         savings = inc - exp
         savings_rate = savings / inc
-        if 0 <= savings_rate < 0.05 and not any(n.id == "high_spend_period" for n in nudges):
+        
+        # Calibration Agent Logic: Determine current savings target based on feedback
+        target_pct = 0.05
+        is_muted = False
+        
+        c_feed = await conn.execute(
+            "SELECT action FROM nudge_feedback WHERE user_id = ? AND nudge_type = 'MICRO_SAVINGS' ORDER BY created_at DESC LIMIT 5",
+            (ctx.user_id,)
+        )
+        recent_feedback = await c_feed.fetchall()
+        
+        if recent_feedback:
+            # If the last 3 interactions were DISMISS, user is fatigued. 
+            # We either lower the target to 2% or mute it completely.
+            actions = [r["action"] for r in recent_feedback]
+            dismiss_streak = 0
+            for a in actions:
+                if a == "DISMISS":
+                    dismiss_streak += 1
+                else:
+                    break
+            
+            if dismiss_streak >= 5:
+                is_muted = True  # Too much fatigue, mute entirely
+            elif dismiss_streak >= 3:
+                target_pct = 0.02  # Lower the target to 2% to make it achievable
+                
+        if not is_muted and 0 <= savings_rate < target_pct and not any(n.id == "high_spend_period" for n in nudges):
+            disp_target = int(target_pct * 100)
             nudges.append(Nudge(
                 id="low_savings_period",
                 type="MICRO_SAVINGS",
                 title="Boost Your Savings",
-                message=f"Your savings rate is looking a bit low ({(savings_rate*100):.1f}%). Try to save at least 5% of your ₹{inc:,.0f} income.",
+                message=f"Your savings rate is looking a bit low ({(savings_rate*100):.1f}%). Try to save at least {disp_target}% of your ₹{inc:,.0f} income.",
                 actionLabel="Save Now"
             ))
             

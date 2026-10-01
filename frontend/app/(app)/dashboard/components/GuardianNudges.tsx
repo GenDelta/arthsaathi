@@ -149,11 +149,19 @@ export function GuardianNudges({ refresh = 0, start_date, end_date }: GuardianNu
                 {nudge.message}
               </p>
               <div className="flex gap-2 mt-1">
-                <Button size="sm" variant={getVariant(nudge.type)} className="w-full" onClick={() => handleAction(nudge)}>
+                <Button size="sm" variant={getVariant(nudge.type)} className="w-full" onClick={() => {
+                  if (nudge.type === "MICRO_SAVINGS") {
+                    guardianApi.submitFeedback(accessToken!, nudge.id, nudge.type, "ACCEPT").catch(console.error);
+                  }
+                  handleAction(nudge);
+                }}>
                   {nudge.actionLabel}
                 </Button>
                 {nudge.type === "MICRO_SAVINGS" && (
-                  <Button size="sm" variant="ghost" className="w-full" onClick={() => setNudges(n => n.filter(x => x.id !== nudge.id))}>
+                  <Button size="sm" variant="ghost" className="w-full" onClick={() => {
+                    setNudges(n => n.filter(x => x.id !== nudge.id));
+                    guardianApi.submitFeedback(accessToken!, nudge.id, nudge.type, "DISMISS").catch(console.error);
+                  }}>
                     Dismiss
                   </Button>
                 )}

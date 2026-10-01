@@ -351,5 +351,18 @@ export const guardianApi = {
       body: JSON.stringify({ entity_name, total_amount }),
       headers: { Authorization: `Bearer ${token}` },
     });
+  },
+
+  async submitFeedback(
+    token: string,
+    nudge_id: string,
+    nudge_type: string,
+    action: "DISMISS" | "ACCEPT"
+  ): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>("/api/guardian/feedback", {
+      method: "POST",
+      body: JSON.stringify({ nudge_id, nudge_type, action }),
+      headers: { Authorization: `Bearer ${token}` },
+    });
   }
 };
