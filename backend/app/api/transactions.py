@@ -295,15 +295,27 @@ async def upload_pdf(
         conn.row_factory = aiosqlite.Row
         await _ensure_transactions_table(conn)
 
+        import hashlib
+        seen_hashes = {}
+
         for item in parsed:
-            tx_id = _new_id()
             occurred_at = item.get("date") or now
             tx_type = item["type"]
             category = _normalise_category(item.get("category", "OTHER"), tx_type)
+            amount = float(item["amount"])
+            desc = item.get("description", "")
 
-            await conn.execute(
+            # Create a deterministic fingerprint for this transaction
+            base_string = f"{ctx.user_id}|{occurred_at}|{tx_type}|{amount}|{desc}"
+            count = seen_hashes.get(base_string, 0)
+            seen_hashes[base_string] = count + 1
+            
+            fingerprint = f"{base_string}|{count}"
+            tx_id = hashlib.md5(fingerprint.encode("utf-8")).hexdigest()
+
+            cursor = await conn.execute(
                 """
-                INSERT INTO transactions
+                INSERT OR IGNORE INTO transactions
                     (id, user_id, type, category, amount, currency, description, occurred_at, created_at)
                 VALUES (?, ?, ?, ?, ?, 'INR', ?, ?, ?)
                 """,
@@ -312,25 +324,28 @@ async def upload_pdf(
                     ctx.user_id,
                     tx_type,
                     category,
-                    item["amount"],
-                    item.get("description", ""),
+                    amount,
+                    desc,
                     occurred_at,
                     now,
                 ),
             )
-            inserted_txs.append(
-                TransactionOut(
-                    id=tx_id,
-                    user_id=ctx.user_id,
-                    type=tx_type,
-                    category=category,
-                    amount=item["amount"],
-                    currency="INR",
-                    description=item.get("description", ""),
-                    occurred_at=occurred_at,
-                    created_at=now,
+            
+            # Only append to inserted_txs if it was actually inserted (not ignored)
+            if cursor.rowcount > 0:
+                inserted_txs.append(
+                    TransactionOut(
+                        id=tx_id,
+                        user_id=ctx.user_id,
+                        type=tx_type,
+                        category=category,
+                        amount=amount,
+                        currency="INR",
+                        description=desc,
+                        occurred_at=occurred_at,
+                        created_at=now,
+                    )
                 )
-            )
 
         await conn.commit()
 

@@ -32,6 +32,16 @@ function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) throw new Error("invalid");
+    
+    // If it's a date-only string (e.g., YYYY-MM-DD from the PDF parser), don't append fake midnight time
+    if (iso.length === 10 || !iso.includes("T")) {
+      return new Intl.DateTimeFormat("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      }).format(d);
+    }
+    
     return new Intl.DateTimeFormat("en-IN", {
       day: "numeric",
       month: "short",
@@ -39,7 +49,7 @@ function formatDate(iso: string): string {
       minute: "2-digit",
     }).format(d);
   } catch {
-    // Raw bank date string (e.g. "30-Sep-\n2026") — clean it and return as-is
+    // Raw bank date string — clean it and return as-is
     return iso.replace(/\s+/g, " ").trim();
   }
 }

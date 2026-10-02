@@ -119,7 +119,8 @@ _DESC_HEADERS = {
 }
 _DEBIT_HEADERS = {"debit", "withdrawal", "dr", "debit amount", "withdrawal amount"}
 _CREDIT_HEADERS = {"credit", "deposit", "cr", "credit amount", "deposit amount"}
-_BALANCE_HEADERS = {"balance", "closing balance", "available balance", "running balance"}
+_AMOUNT_HEADERS = {"amount", "amount()", "amount( )", "txn amount", "transaction amount", "amount(inr)", "amount (inr)", "amount(rs)"}
+_BALANCE_HEADERS = {"balance", "closing balance", "available balance", "running balance", "balance( )", "balance()"}
 
 
 def _normalise_header(h: str) -> str:
@@ -130,7 +131,7 @@ def _find_column_indices(headers: list[str]) -> dict[str, int | None]:
     """Map semantic column roles to their positional indices."""
     indices: dict[str, int | None] = {
         "date": None, "description": None,
-        "debit": None, "credit": None, "balance": None,
+        "debit": None, "credit": None, "balance": None, "amount": None,
     }
     for i, raw in enumerate(headers):
         h = _normalise_header(raw)
@@ -142,6 +143,8 @@ def _find_column_indices(headers: list[str]) -> dict[str, int | None]:
             indices["debit"] = i
         elif h in _CREDIT_HEADERS and indices["credit"] is None:
             indices["credit"] = i
+        elif h in _AMOUNT_HEADERS and indices["amount"] is None:
+            indices["amount"] = i
         elif h in _BALANCE_HEADERS and indices["balance"] is None:
             indices["balance"] = i
     return indices
@@ -156,10 +159,13 @@ def _parse_amount(raw: Any) -> float | None:
     text = str(raw).strip()
     if not text or text in {"-", "–", "—", "nil", "n/a"}:
         return None
-    # Remove currency symbols and thousands separators
-    text = re.sub(r"[₹$€£,\s]", "", text)
-    # Handle Dr/Cr suffix (some banks append these)
-    text = re.sub(r"[drDR]+$", "", text).strip()
+        
+    # Strip common prefixes/suffixes completely to avoid leaving stray dots (like from 'Rs.' or 'Dr.')
+    text = re.sub(r"(?i)rs\.?|inr|cr\.?|dr\.?", "", text)
+    text = re.sub(r"[a-zA-Z\s]+", "", text)
+    
+    # Super robust: strip everything except digits, decimal point, and minus sign
+    text = re.sub(r"[^0-9\.-]", "", text)
     try:
         return float(text)
     except ValueError:
@@ -316,14 +322,20 @@ def _row_to_transaction(
         debit_raw = cell("debit")
         credit_raw = cell("credit")
 
+        amount_raw = cell("amount")
+
         # Skip rows that look like headers repeated mid-table or are empty
         if not date or not description:
+            logger.warning("Row skipped: missing date (%r) or desc (%r)", date, description)
             return None
         if _normalise_header(date) in _DATE_HEADERS:
             return None  # repeated header row
 
         debit = _parse_amount(debit_raw)
         credit = _parse_amount(credit_raw)
+        
+        tx_type = None
+        amount = 0.0
 
         if credit and (not debit or credit > 0):
             tx_type = "INCOME"
@@ -331,13 +343,35 @@ def _row_to_transaction(
         elif debit and debit > 0:
             tx_type = "EXPENSE"
             amount = debit
+        elif amount_raw:
+            raw_str = amount_raw.strip().lower()
+            amt_val = _parse_amount(raw_str)
+            if not amt_val:
+                logger.warning("Row skipped: amount_raw %r failed parsing", amount_raw)
+                return None
+            
+            if "cr" in raw_str:
+                tx_type = "INCOME"
+            elif "dr" in raw_str:
+                tx_type = "EXPENSE"
+            elif raw_str.startswith("-"):
+                tx_type = "EXPENSE"
+            else:
+                desc_lower = description.lower()
+                if any(k in desc_lower for k in ["cr/", "/cr/", "upiab", "credit", "received", "refund", "salary", "interest", "cashback", "neft cr", "imps cr"]):
+                    tx_type = "INCOME"
+                else:
+                    tx_type = "EXPENSE"
+            amount = abs(amt_val)
         else:
+            logger.warning("Row skipped: no debit, credit, or amount. %r %r %r", debit_raw, credit_raw, amount_raw)
             return None  # no usable amount
 
         category = _infer_category(description, tx_type)
+        logger.info("Row SUCCESS: %r %r %r %r", date, description, amount, tx_type)
 
         return {
-            "date": date,
+            "date": _normalize_date(date),
             "description": description,
             "amount": round(amount, 2),
             "type": tx_type,
@@ -386,11 +420,18 @@ def parse_bank_statement(
                 "pikepdf is required for encrypted PDF support. Add it to pyproject.toml."
             ) from exc
 
-        buf = io.BytesIO()
-        with pikepdf.open(io.BytesIO(file_bytes), password=password) as pdf:
-            pdf.save(buf)
-        buf.seek(0)
-        pdf_source: bytes | io.BytesIO = buf
+        try:
+            buf = io.BytesIO()
+            with pikepdf.open(io.BytesIO(file_bytes), password=password) as pdf:
+                pdf.save(buf)
+            buf.seek(0)
+            pdf_source: bytes | io.BytesIO = buf
+        except Exception as exc:
+            exc_repr = repr(exc)
+            exc_str = str(exc)
+            if "PasswordError" in exc_repr or "invalid password" in exc_str.lower():
+                raise ValueError("The provided password is incorrect. Please try again.") from exc
+            raise ValueError(f"Could not open encrypted PDF: {exc}") from exc
     else:
         pdf_source = io.BytesIO(file_bytes)
 
@@ -407,7 +448,7 @@ def parse_bank_statement(
     def _best_tables(page: Any) -> list:
         for strategy in _STRATEGIES:
             try:
-                tbls = page.extract_tables({"table_settings": strategy})
+                tbls = page.extract_tables(table_settings=strategy)
                 if tbls and any(len(t) > 2 for t in tbls if t):
                     return tbls
             except Exception:
@@ -417,6 +458,15 @@ def parse_bank_statement(
     try:
         with pdfplumber.open(pdf_source) as pdf:
             logger.info("PDF opened: %d pages", len(pdf.pages))
+            
+            # Persist header state across all pages and tables.
+            # Bank statements often only print the header on the very first page.
+            global_col_idx: dict[str, int | None] = {
+                "date": None, "description": None,
+                "debit": None, "credit": None, "balance": None,
+            }
+            header_locked = False
+
             for page_num, page in enumerate(pdf.pages, start=1):
                 tables = _best_tables(page)
                 if not tables:
@@ -441,13 +491,6 @@ def parse_bank_statement(
                                 page_num, t_idx, len(table),
                                 [str(c or "")[:20] for c in table[0]])
 
-                    # Reset header per table — each table may have its own header row
-                    col_idx: dict[str, int | None] = {
-                        "date": None, "description": None,
-                        "debit": None, "credit": None, "balance": None,
-                    }
-                    header_locked = False
-
                     for row_idx, row in enumerate(table):
                         if not row:
                             continue
@@ -457,22 +500,28 @@ def parse_bank_statement(
                             if (
                                 candidate["date"] is not None
                                 and candidate["description"] is not None
-                                and (candidate["debit"] is not None or candidate["credit"] is not None)
+                                and (candidate["debit"] is not None or candidate["credit"] is not None or candidate["amount"] is not None)
                             ):
-                                col_idx = candidate
+                                global_col_idx = candidate
                                 header_locked = True
                                 logger.info("Page %d table %d: header at row %d → %s",
-                                            page_num, t_idx, row_idx, col_idx)
+                                            page_num, t_idx, row_idx, global_col_idx)
                                 continue
 
                         if not header_locked:
                             continue
 
-                        tx = _row_to_transaction(row, col_idx)
+                        tx = _row_to_transaction(row, global_col_idx)
                         if tx:
                             transactions.append(tx)
 
     except Exception as exc:
+        exc_repr = repr(exc)
+        exc_str = str(exc)
+        if "PasswordError" in exc_repr or "PDFPasswordIncorrect" in exc_repr or "invalid password" in exc_str.lower():
+            logger.warning("PDF requires a password or provided password was incorrect.")
+            raise ValueError("This PDF is password-protected. Please provide the correct password to upload it.") from exc
+        
         logger.error("PDF parsing failed: %s", exc, exc_info=True)
         raise ValueError(f"Could not parse PDF: {exc}") from exc
 

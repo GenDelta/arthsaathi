@@ -100,13 +100,6 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-dvh flex items-center justify-center p-4 bg-background relative">
-      {/* Language Toggle */}
-      <button
-        onClick={() => setLang(lang === "en" ? "hi" : "en")}
-        className="absolute top-6 right-6 px-4 py-2 rounded-full border border-border bg-[#0A0A0A] text-sm font-medium text-text-primary hover:border-accent transition-colors"
-      >
-        {common.switchTo}
-      </button>
 
       <SurfaceCard className="w-full max-w-md p-8 flex flex-col gap-6 animate-fade-up mt-8 md:mt-0">
         {/* Logo */}
