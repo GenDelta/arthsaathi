@@ -31,6 +31,7 @@ interface AuthState {
 
   setAuth: (accessToken: string, refreshToken: string, user: User, isOnboarded?: boolean) => void;
   setAccessToken: (token: string) => void;
+  setOnboarded: (value: boolean) => void;
   clearAuth: () => void;
   fetchMe: () => Promise<void>;
 }
@@ -51,6 +52,10 @@ export const useAuthStore = create<AuthState>()(
 
       setAccessToken(token) {
         set({ accessToken: token });
+      },
+
+      setOnboarded(value) {
+        set({ isOnboarded: value });
       },
 
       clearAuth() {

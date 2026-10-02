@@ -12,7 +12,7 @@ import { Loader2, Send } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { accessToken, user, fetchMe } = useAuthStore();
+  const { accessToken, user, fetchMe, setOnboarded } = useAuthStore();
 
   // Default to English — user can always switch later from dashboard
   const lang: Language = "en";
@@ -57,14 +57,26 @@ export default function OnboardingPage() {
 
       if (res.is_complete) {
         setComplete(true);
-        await onboardingApi.complete(res.current_profile, accessToken);
-        await fetchMe();
+        try {
+          await onboardingApi.complete(res.current_profile, accessToken);
+        } catch (completeErr) {
+          console.error("complete() failed:", completeErr);
+          // Don't block redirect on complete failure — still mark onboarded
+        }
+        // Mark as onboarded in the store IMMEDIATELY so the layout guard
+        // doesn't bounce us back to /onboarding when /dashboard mounts.
+        setOnboarded(true);
+        try {
+          await fetchMe();
+        } catch (meErr) {
+          console.error("fetchMe() failed:", meErr);
+        }
         setTimeout(() => {
           router.replace("/dashboard");
-        }, 2500);
+        }, 2000);
       }
     } catch (err) {
-      console.error(err);
+      console.error("handleChat error:", err);
     } finally {
       setLoading(false);
     }

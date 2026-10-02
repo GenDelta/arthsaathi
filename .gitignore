@@ -6,6 +6,7 @@ FRONTEND_PLAN.md
 IMPLEMENTED_FEATURES.md
 ONBOARDING_IMPLEMENTATION_PLAN.md
 FUTURE_PLAN.md
+RESEARCH_PAPER_CONTEXT.md
 .agents/
 .agent/
 
@@ -79,3 +80,9 @@ Thumbs.db
 *.swo
 
 skills-lock.json
+
+# ─── Research paper work (generated, scoped to paper folders) ───────────────
+# LaTeX sources, figures, build outputs, QA scripts and prior-session notes.
+/paper/
+/PAPER_WORK/
+paper.pdf

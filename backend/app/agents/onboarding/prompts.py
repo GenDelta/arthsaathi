@@ -8,13 +8,13 @@ Extract any of the following fields if mentioned:
 - occupation: free text (e.g. "food delivery", "paddy farmer", "technician", "farming")
 - income_frequency: strictly map to one of DAILY, WEEKLY, MONTHLY, SEASONAL (e.g., "after harvest" or "once a season" = SEASONAL)
 - average_income: a number (monthly/per-cycle amount in INR)
-- financial_pain_points: free text describing financial worries, goals, aspirations, or challenges (e.g., "saving for land", "daily expenses", "debt")
+- financial_pain_points: any free text describing financial worries, goals, aspirations, or challenges (e.g., "saving for land", "daily expenses", "debt", "bad investments", "no savings")
 
 User message: {message}
 
 You must return ONLY a strictly valid JSON object. Do not wrap it in markdown. Do not include any text outside the JSON object.
 If the user provides an answer that even partially addresses a field, extract it aggressively. Do not ignore short 1-word answers (like "Male", "Seasonally", "UP"); always map them to the corresponding field.
-Example: {{"name": "Raju", "gender": "MALE", "state_of_residence": "Maharashtra", "employment_type": "GIG_WORKER", "average_income": 2000}}"""
+Example: {{"name": "Raju", "gender": "MALE", "state_of_residence": "Maharashtra", "employment_type": "GIG_WORKER", "average_income": 2000, "financial_pain_points": "debt and low savings"}}"""
 
 DIALOGUE_SYSTEM_PROMPT = """You are ArthSaathi's friendly onboarding guide for India's gig and agricultural workers.
 You are helping a new user set up their financial profile through a short, focused conversation.

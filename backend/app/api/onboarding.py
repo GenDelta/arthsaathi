@@ -61,7 +61,27 @@ class CompleteResponse(BaseModel):
 async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depends(get_tenant_context)) -> CompleteResponse:
     db_path = get_settings().database_path
     profile = body.profile
-    
+
+    # --- Sanitize enum values against DB CHECK constraints ---
+    VALID_EMPLOYMENT_TYPES = {"SALARIED", "GIG_WORKER", "SEASONAL", "UNEMPLOYED"}
+    VALID_INCOME_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "SEASONAL"}
+
+    raw_emp = (profile.get("employment_type") or "").upper().strip()
+    # Normalise common LLM variants
+    emp_map = {
+        "GIG": "GIG_WORKER", "FREELANCE": "GIG_WORKER", "SELF_EMPLOYED": "GIG_WORKER",
+        "PART_TIME": "SALARIED", "FULL_TIME": "SALARIED",
+        "AGRICULTURAL": "SEASONAL", "FARMING": "SEASONAL",
+        "DAILY_WAGE": "SALARIED", "DAILY WAGE": "SALARIED",
+    }
+    raw_emp = emp_map.get(raw_emp, raw_emp)
+    employment_type = raw_emp if raw_emp in VALID_EMPLOYMENT_TYPES else None
+
+    raw_freq = (profile.get("income_frequency") or "").upper().strip()
+    freq_map = {"IRREGULAR": "SEASONAL", "FORTNIGHTLY": "WEEKLY", "ANNUALLY": "SEASONAL", "YEARLY": "SEASONAL"}
+    raw_freq = freq_map.get(raw_freq, raw_freq)
+    income_frequency = raw_freq if raw_freq in VALID_INCOME_FREQUENCIES else None
+
     async with aiosqlite.connect(db_path) as conn:
         await conn.execute(
             """
@@ -81,9 +101,9 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
             """,
             (
                 ctx.user_id,
-                profile.get("employment_type"),
+                employment_type,
                 profile.get("occupation"),
-                profile.get("income_frequency"),
+                income_frequency,
                 profile.get("average_income"),
                 profile.get("financial_pain_points"),
                 profile.get("date_of_birth"),
@@ -91,14 +111,15 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
                 profile.get("state_of_residence")
             )
         )
-        
+
         # Update name and onboarding flag in users table
         name = profile.get("name")
         if name:
             await conn.execute("UPDATE users SET is_onboarded = 1, name = ? WHERE id = ?", (name, ctx.user_id))
         else:
             await conn.execute("UPDATE users SET is_onboarded = 1 WHERE id = ?", (ctx.user_id,))
-            
+
         await conn.commit()
-        
+        logger.info("Onboarding complete for user %s (employment=%s freq=%s)", ctx.user_id, employment_type, income_frequency)
+
     return CompleteResponse(success=True)
