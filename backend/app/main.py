@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.is_shutting_down = False
+    yield
+    app.state.is_shutting_down = True
+
 def create_app() -> FastAPI:
     """Factory function that creates and configures the FastAPI application."""
     application = FastAPI(
@@ -26,6 +34,7 @@ def create_app() -> FastAPI:
         description="Multi-agent financial-literacy platform for gig and agricultural workers.",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # ─── CORS ─────────────────────────────────────────────────────────────────
@@ -53,12 +62,20 @@ def create_app() -> FastAPI:
     application.include_router(auth.router, prefix="/api")
 
     # Future phases — registered here as each phase completes:
-    from app.api import scam_scanner
+    from app.api import onboarding, profile, scam_scanner, schemes, transactions
     application.include_router(scam_scanner.router, prefix="/api")
-    # from app.api import documents, schemes, transactions, nudges, ngo, notifications
+    application.include_router(onboarding.router, prefix="/api")
+    application.include_router(profile.router, prefix="/api")
+    application.include_router(schemes.router, prefix="/api")
+    # Phase 3: Transactions & Insights
+    from app.api import guardian, transactions, katha, supervisor
+    application.include_router(transactions.router, prefix="/api")
+    application.include_router(guardian.router, prefix="/api")
+    application.include_router(katha.router, prefix="/api")
+    application.include_router(supervisor.router, prefix="/api")
+    # Future phases — registered here as each phase completes:
+    # from app.api import documents, nudges, ngo, notifications
     # application.include_router(documents.router, prefix="/api")
-    # application.include_router(schemes.router, prefix="/api")
-    # application.include_router(transactions.router, prefix="/api")
     # application.include_router(nudges.router, prefix="/api")
     # application.include_router(ngo.router, prefix="/api")
     # application.include_router(notifications.router, prefix="/api")

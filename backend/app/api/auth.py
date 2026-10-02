@@ -1,25 +1,33 @@
-"""Authentication endpoints: register, login, refresh, and /me.
+"""Authentication endpoints: register, login, refresh, /me, and TOTP setup/verify.
 
 Implements ARCHITECTURE.md §3.1.  Route handlers raise domain exceptions
 (AuthenticationError, ConflictError) — they do NOT construct HTTPException
 directly.  The exception handler in app/main.py maps these to HTTP responses.
+
+TOTP Auth Flow:
+  POST /api/auth/totp/setup   → New user provides phone → get secret + QR code URI
+  POST /api/auth/totp/verify  → User provides phone + 6-digit TOTP code → get JWT
 """
 
 from __future__ import annotations
 
+import base64
+import io
 import logging
 
+import aiosqlite
+import pyotp
+import qrcode
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.core.exceptions import AuthenticationError
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    hash_password,
-    verify_password,
 )
 from app.repositories.user import UserRepository
 
@@ -30,30 +38,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ─── Request / Response models ────────────────────────────────────────────────
 
-
-class RegisterRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    phone_number: str = Field(..., pattern=r"^\+91\d{10}$")
-    password: str = Field(..., min_length=8, max_length=128)
-    occupation: str | None = Field(None, max_length=100)
-    language_pref: str = Field("hi", pattern=r"^[a-z]{2}$")
-
-
-class RegisterResponse(BaseModel):
-    user_id: str
-    access_token: str
-    refresh_token: str
-
-
-class LoginRequest(BaseModel):
-    phone_number: str
-    password: str
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    role: str
 
 
 class RefreshRequest(BaseModel):
@@ -70,68 +54,47 @@ class MeResponse(BaseModel):
     role: str
     language_pref: str
     organization_id: str | None
+    is_onboarded: bool
+
+
+# ─── TOTP Models ──────────────────────────────────────────────────────────────
+
+
+class TotpSetupRequest(BaseModel):
+    """Provide a phone number to get a TOTP setup QR code."""
+    phone_number: str = Field(..., pattern=r"^\+91\d{10}$")
+    force_reset: bool = False
+
+
+class TotpSetupResponse(BaseModel):
+    """
+    Returns:
+      - qr_code_uri: a data: URI (base64 PNG) of the QR code to scan.
+      - secret: the raw base32 secret (for manual entry in authenticator apps).
+      - is_new_user: True if this is first-time setup, False if secret already exists.
+    """
+    qr_code_uri: str
+    secret: str
+    is_new_user: bool
+
+
+class TotpVerifyRequest(BaseModel):
+    phone_number: str = Field(..., pattern=r"^\+91\d{10}$")
+    totp_code: str = Field(..., min_length=6, max_length=6)
+
+
+class TotpVerifyResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    is_onboarded: bool
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=201)
-async def register(body: RegisterRequest) -> RegisterResponse:
-    """Register a new citizen account.
-
-    Raises:
-        ConflictError (409): If ``phone_number`` is already registered.
-    """
-    repo = UserRepository()
-    hashed = hash_password(body.password)
-
-    user = await repo.create_user(
-        name=body.name,
-        phone_number=body.phone_number,
-        password_hash=hashed,
-        occupation=body.occupation,
-        language_pref=body.language_pref,
-    )
-
-    logger.debug("Registered new user id=%s", user.id)
-    return RegisterResponse(
-        user_id=user.id,
-        access_token=create_access_token(user.id, user.role, user.organization_id),
-        refresh_token=create_refresh_token(user.id),
-    )
-
-
-@router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest) -> LoginResponse:
-    """Authenticate with phone number and password.
-
-    Raises:
-        AuthenticationError (401): If the phone number is not found or the
-            password is incorrect.  Both cases return the same error message
-            to avoid user enumeration.
-    """
-    repo = UserRepository()
-    user = await repo.get_by_phone(body.phone_number)
-
-    if user is None or not verify_password(body.password, user.password_hash):
-        raise AuthenticationError("Invalid phone number or password")
-
-    logger.debug("User logged in id=%s role=%s", user.id, user.role)
-    return LoginResponse(
-        access_token=create_access_token(user.id, user.role, user.organization_id),
-        refresh_token=create_refresh_token(user.id),
-        role=user.role,
-    )
-
-
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh_token(body: RefreshRequest) -> RefreshResponse:
-    """Exchange a valid refresh token for a new access token.
-
-    Raises:
-        AuthenticationError (401): If the refresh token is expired or invalid,
-            or if it is not a refresh-type token.
-    """
+    """Exchange a valid refresh token for a new access token."""
     payload = decode_token(body.refresh_token)
 
     if payload.get("token_type") != "refresh":
@@ -141,7 +104,6 @@ async def refresh_token(body: RefreshRequest) -> RefreshResponse:
     if not user_id:
         raise AuthenticationError("Token missing subject claim")
 
-    # Re-fetch user to pick up any role/org changes since last login
     repo = UserRepository()
     user = await repo.get_by_id_system(user_id)
 
@@ -162,4 +124,98 @@ async def me(ctx: TenantContext = Depends(get_tenant_context)) -> MeResponse:  #
         role=user.role,
         language_pref=user.language_pref,
         organization_id=user.organization_id,
+        is_onboarded=bool(user.is_onboarded),
+    )
+
+
+# ─── TOTP Endpoints ───────────────────────────────────────────────────────────
+
+
+@router.post("/totp/setup", response_model=TotpSetupResponse)
+async def totp_setup(body: TotpSetupRequest) -> TotpSetupResponse:
+    """Step 1 of TOTP auth: upsert user, generate/return TOTP secret + QR code.
+
+    - First call: generates a new TOTP secret for this phone number, stores it,
+      and returns the QR code URI to scan with Google Authenticator / Authy.
+    - Subsequent calls (user lost their secret): regenerates a fresh secret.
+      The user must re-scan the QR code in their authenticator app.
+    """
+    db_path = get_settings().database_path
+    repo = UserRepository()
+
+    # Upsert the user (create if new, fetch if existing)
+    user = await repo.upsert_user_via_phone(body.phone_number)
+
+    is_new_user = not user.totp_secret or body.force_reset
+
+    if is_new_user:
+        # Generate a fresh TOTP secret for new users
+        secret = pyotp.random_base32()
+        
+        # Persist the new secret
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "UPDATE users SET totp_secret = ?, updated_at = datetime('now') WHERE id = ?",
+                (secret, user.id),
+            )
+            await conn.commit()
+        logger.info("New TOTP secret generated for user %s", user.id)
+    else:
+        # Returning user: reuse their existing secret!
+        secret = user.totp_secret
+        logger.info("Reusing existing TOTP secret for user %s", user.id)
+
+    # Build the OTPAuth URI (compatible with Google Authenticator, Authy, etc.)
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=body.phone_number,
+        issuer_name="ArthSaathi",
+    )
+
+    # Generate QR code as a base64 data URI so the frontend can embed it directly
+    qr = qrcode.make(provisioning_uri)
+    buf = io.BytesIO()
+    qr.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    qr_data_uri = f"data:image/png;base64,{qr_b64}"
+
+    logger.info("TOTP secret generated for user %s (new=%s)", user.id, is_new_user)
+
+    return TotpSetupResponse(
+        qr_code_uri=qr_data_uri,
+        secret=secret,
+        is_new_user=is_new_user,
+    )
+
+
+@router.post("/totp/verify", response_model=TotpVerifyResponse)
+async def totp_verify(body: TotpVerifyRequest) -> TotpVerifyResponse:
+    """Step 2 of TOTP auth: verify the 6-digit code from the authenticator app.
+
+    Validates with a ±1 window (30-second grace period for clock drift).
+
+    Raises:
+        AuthenticationError (401): If phone is not found, TOTP not set up,
+            or the code is incorrect.
+    """
+    repo = UserRepository()
+    user = await repo.get_by_phone(body.phone_number)
+
+    if user is None:
+        raise AuthenticationError("Phone number not registered. Please set up your authenticator first.")
+
+    if not user.totp_secret:
+        raise AuthenticationError("TOTP not configured. Please complete authenticator setup.")
+
+    totp = pyotp.TOTP(user.totp_secret)
+
+    # valid_window=1 allows the previous and next 30-second codes to handle clock drift
+    if not totp.verify(body.totp_code, valid_window=1):
+        raise AuthenticationError("Invalid or expired authenticator code. Try again.")
+
+    logger.info("TOTP verified for user %s", user.id)
+    return TotpVerifyResponse(
+        access_token=create_access_token(user.id, user.role, user.organization_id),
+        refresh_token=create_refresh_token(user.id),
+        is_onboarded=bool(user.is_onboarded),
     )

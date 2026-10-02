@@ -1,6 +1,5 @@
 import pytest
 from langchain_core.language_models import FakeListChatModel
-from langchain_core.messages import AIMessage
 
 from app.agents.scam.graph import scam_graph
 from app.core import llm

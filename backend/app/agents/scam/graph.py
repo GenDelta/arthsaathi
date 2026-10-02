@@ -3,15 +3,15 @@
 import json
 import logging
 import re
-from typing import TypedDict, Any
+from typing import Any, TypedDict
 
 import lancedb
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
 
-from app.core.config import get_settings
-from app.core.llm import get_llm, get_embeddings
 from app.agents.scam.prompts import SCAM_SYSTEM_PROMPT
+from app.core.config import get_settings
+from app.core.llm import get_embeddings, get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ class ScamScanState(TypedDict):
     matched_clauses: list[dict[str, Any]]
     risk_score: float | None
     risk_summary: str | None
+    lender_name: str | None
     language: str | None                 # user language preference (e.g. "hi", "mr", "en")
 
 
@@ -98,7 +99,7 @@ async def clause_match_node(state: ScamScanState) -> ScamScanState:
 
 async def summarize_node(state: ScamScanState) -> ScamScanState:
     """Generate risk summary and score using LLM."""
-    llm = get_llm()
+    llm = get_llm(temperature=0.0)
     
     language = state.get("language") or "en"
     text = state.get("verified_text") or state.get("raw_text", "")
@@ -140,7 +141,8 @@ async def summarize_node(state: ScamScanState) -> ScamScanState:
             return {
                 **state,
                 "risk_summary": data.get("risk_summary", "Summary unavailable."),
-                "risk_score": float(data.get("risk_score", 0.0))
+                "risk_score": float(data.get("risk_score", 0.0)),
+                "lender_name": data.get("lender_name")
             }
         except json.JSONDecodeError:
             pass

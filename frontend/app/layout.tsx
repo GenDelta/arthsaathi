@@ -1,38 +1,43 @@
-import type { Metadata } from "next";
-import { Inter, Noto_Sans_Devanagari } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Outfit, Inter, JetBrains_Mono } from 'next/font/google';
+import './globals.css';
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
+const outfit = Outfit({ 
+  variable: '--font-outfit', 
+  subsets: ['latin'], 
+  weight: ['500', '600', '700'], 
+  display: 'swap' 
 });
 
-const devanagari = Noto_Sans_Devanagari({
-  variable: "--font-devanagari",
-  subsets: ["devanagari", "latin"],
-  weight: ["400", "500", "700"],
-  display: "swap",
+const inter = Inter({ 
+  variable: '--font-inter', 
+  subsets: ['latin'], 
+  weight: ['400', '500'], 
+  display: 'swap' 
+});
+
+const mono = JetBrains_Mono({ 
+  variable: '--font-mono', 
+  subsets: ['latin'], 
+  weight: ['400', '500'], 
+  display: 'swap' 
 });
 
 export const metadata: Metadata = {
-  title: "ArthSaathi — आर्थसाथी",
-  description:
-    "आपका वित्तीय साथी। Financial literacy and government scheme guidance for gig and agricultural workers.",
-  keywords: ["financial literacy", "gig workers", "government schemes", "Hindi", "ArthSaathi"],
+  title: 'ArthSaathi — Your Financial Companion',
+  description: 'AI-powered financial literacy for gig workers and agricultural laborers in India.',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html
-      lang="hi"
-      className={`${inter.variable} ${devanagari.variable} h-full`}
-    >
-      <body className="min-h-full">{children}</body>
+    <html lang="en" className={`${outfit.variable} ${inter.variable} ${mono.variable} h-full bg-background`} suppressHydrationWarning>
+      <body className="h-full flex flex-col antialiased" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

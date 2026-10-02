@@ -1,8 +1,11 @@
 import io
-from PIL import Image, ImageDraw
+
 import pytest
-from app.services.ocr import extract_text
+from PIL import Image, ImageDraw
+
 from app.core.exceptions import FileTooLargeError, OcrIllegibleError, UnsupportedMediaTypeError
+from app.services.ocr import extract_text
+
 
 def create_dummy_image(text="Test Document"):
     """Create a dummy in-memory image for OCR testing."""

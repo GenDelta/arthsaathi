@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"  # "ollama" | "openai" | "anthropic"
     llm_api_key: str = "not-required-for-ollama"  # only used for openai/anthropic
     llm_model_name: str = "glm-5.3-flash"
+    openai_api_base: str | None = None
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dim: int = 384
 

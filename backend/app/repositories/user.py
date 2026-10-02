@@ -1,9 +1,4 @@
-"""UserRepository — all database access for the users table.
-
-Every method takes a ``TenantContext`` (or is explicitly a system-level operation
-like ``create_user`` and ``get_by_phone`` which run before a context exists).
-No route handler executes SQL directly — all queries go through this class.
-"""
+"""UserRepository — all database access for the users table."""
 
 from __future__ import annotations
 
@@ -31,12 +26,14 @@ class UserRow:
     organization_id: str | None
     name: str
     phone_number: str
-    password_hash: str
+    password_hash: str | None          # None for TOTP-only users
     occupation: str | None
     income_bracket: str | None
     language_pref: str
     role: str
     is_active: int
+    is_onboarded: int
+    totp_secret: str | None
     created_at: str
     updated_at: str
 
@@ -49,11 +46,6 @@ class UserRepository:
 
     def __init__(self, database_path: str | None = None) -> None:
         self._db_path = database_path or get_settings().database_path
-
-    async def _connect(self) -> aiosqlite.Connection:  # type: ignore[return]
-        """Return an open aiosqlite connection with correct pragmas."""
-        conn = aiosqlite.connect(self._db_path)
-        return conn
 
     async def create_user(
         self,
@@ -106,6 +98,39 @@ class UserRepository:
                 raise
 
         logger.debug("Created user id=%s role=%s", user_id, role)
+        return await self.get_by_id_system(user_id)
+
+    async def upsert_user_via_phone(self, phone_number: str) -> UserRow:
+        """Fetch existing user by phone, or create a new one if not found.
+
+        Used by the TOTP setup flow — no password required.
+        New users are given a generated name (can be updated later in profile).
+        """
+        existing = await self.get_by_phone(phone_number)
+        if existing:
+            return existing
+
+        # Generate a placeholder name from the last 4 digits
+        last4 = phone_number[-4:]
+        generated_name = f"User {last4}"
+
+        user_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+
+        async with aiosqlite.connect(self._db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            await conn.execute("PRAGMA foreign_keys = ON")
+            await conn.execute(
+                """
+                INSERT INTO users
+                    (id, name, phone_number, password_hash, language_pref, role, created_at, updated_at)
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+                """,
+                (user_id, generated_name, phone_number, "en", "CITIZEN", now, now),
+            )
+            await conn.commit()
+
+        logger.info("Created new TOTP user id=%s phone=%s", user_id, phone_number)
         return await self.get_by_id_system(user_id)
 
     async def get_by_phone(self, phone_number: str) -> UserRow | None:
@@ -163,11 +188,21 @@ class UserRepository:
             raise NotFoundError(f"User '{user_id}' not found")
         return _row_to_user(row)
 
+    async def set_onboarded(self, user_id: str) -> None:
+        """Mark a user as fully onboarded."""
+        async with aiosqlite.connect(self._db_path) as conn:
+            await conn.execute(
+                "UPDATE users SET is_onboarded = 1, updated_at = datetime('now') WHERE id = ?",
+                (user_id,),
+            )
+            await conn.commit()
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 def _row_to_user(row: aiosqlite.Row) -> UserRow:
+    keys = row.keys() if hasattr(row, "keys") else []
     return UserRow(
         id=row["id"],
         organization_id=row["organization_id"],
@@ -179,6 +214,8 @@ def _row_to_user(row: aiosqlite.Row) -> UserRow:
         language_pref=row["language_pref"],
         role=row["role"],
         is_active=row["is_active"],
+        is_onboarded=row["is_onboarded"] if "is_onboarded" in (row.keys() if hasattr(row, "keys") else []) else 0,
+        totp_secret=row["totp_secret"] if "totp_secret" in (row.keys() if hasattr(row, "keys") else []) else None,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
