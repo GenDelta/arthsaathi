@@ -1,0 +1,12 @@
+"""Consent configuration and constants."""
+
+CURRENT_NOTICE_VERSION = "v1"
+
+NOTICE_CHANGELOG = {
+    "v1": "2026-10-04: Initial consent notice.",
+}
+
+# The consent purposes we track
+PURPOSE_STATEMENT_PROCESSING = "STATEMENT_PROCESSING"
+PURPOSE_VOICE_PROCESSING = "VOICE_PROCESSING"
+PURPOSE_COHORT_SHARING = "COHORT_SHARING"

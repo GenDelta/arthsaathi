@@ -19,8 +19,8 @@ def _get_lancedb_table():
     return db.open_table("schemes_vectors")
 
 def _get_user_embedding(profile: dict, focus: str = "general", explicit_query: str = "") -> list:
-    from langchain_huggingface import HuggingFaceEmbeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    from app.core.llm import get_embeddings
+    embeddings = get_embeddings()
     
     gender = profile.get("gender", "").lower()
     state = profile.get("state_of_residence", "")
@@ -57,6 +57,43 @@ def _get_user_embedding(profile: dict, focus: str = "general", explicit_query: s
         ).strip()
     
     return embeddings.embed_query(query)
+
+async def extract_overrides_node(state: MatchmakerState):
+    query = state.get("query", "").strip()
+    if not query:
+        return {}
+        
+    llm = get_llm(temperature=0)
+    sys_msg = """Extract explicit user attributes from the search query if they override the profile.
+    Output ONLY a JSON dict with any of these keys if explicitly mentioned:
+    - state_of_residence: e.g. "West Bengal"
+    - age: e.g. 20 (integer)
+    - occupation: e.g. "farmer"
+    - monthly_income: e.g. if they say "2000 in a week", calculate monthly: 8000.
+    Output {} if no overrides found. Do NOT use markdown.
+    """
+    res = await llm.ainvoke([SystemMessage(content=sys_msg), HumanMessage(content=query)])
+    
+    try:
+        overrides = json.loads(res.content.strip())
+        profile = dict(state.get("user_profile", {}))
+        if "state_of_residence" in overrides:
+            profile["state_of_residence"] = overrides["state_of_residence"]
+        if "occupation" in overrides:
+            profile["occupation"] = overrides["occupation"]
+        if "age" in overrides:
+            # Fake a DOB for the embedding logic
+            from datetime import date
+            profile["date_of_birth"] = f"{date.today().year - int(overrides['age'])}-01-01"
+        if "monthly_income" in overrides:
+            profile["monthly_income"] = overrides["monthly_income"]
+            
+        logger.info("Extracted overrides from query: %s", overrides)
+        return {"user_profile": profile}
+    except Exception as e:
+        logger.warning(f"Failed to extract overrides: {e}")
+        return {}
+
 
 async def central_retrieval_node(state: MatchmakerState):
     profile = state.get("user_profile", {})
@@ -199,16 +236,15 @@ async def consensus_node(state: MatchmakerState):
 def build_matchmaker_graph():
     workflow = StateGraph(MatchmakerState)
     
+    workflow.add_node("extract_overrides", extract_overrides_node)
     workflow.add_node("central_retrieval", central_retrieval_node)
     workflow.add_node("state_retrieval", state_retrieval_node)
     workflow.add_node("consensus", consensus_node)
     
-    workflow.add_edge(START, "central_retrieval")
+    workflow.add_edge(START, "extract_overrides")
+    workflow.add_edge("extract_overrides", "central_retrieval")
     workflow.add_edge("central_retrieval", "state_retrieval")
-    
-    
     workflow.add_edge("state_retrieval", "consensus")
-    
     workflow.add_edge("consensus", END)
     
     return workflow.compile()

@@ -11,7 +11,7 @@ import ReactMarkdown from "react-markdown";
 type Message = { id: string; role: "user" | "bot"; text: string };
 
 export function SupervisorChat() {
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -22,18 +22,26 @@ export function SupervisorChat() {
 
   // 1. Load history
   useEffect(() => {
-    const saved = localStorage.getItem("arthsaathi_supervisor_chat");
-    if (saved) {
-      try { setMessages(JSON.parse(saved)); } catch (e) {}
+    if (user?.id) {
+      const saved = localStorage.getItem(`arthsaathi_supervisor_chat_${user.id}`);
+      if (saved) {
+        try { setMessages(JSON.parse(saved)); } catch (e) {}
+      } else {
+        setMessages([]);
+      }
+    } else {
+      setMessages([]);
     }
-  }, []);
+  }, [user?.id]);
 
   // 2. Save history
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem("arthsaathi_supervisor_chat", JSON.stringify(messages));
+    if (messages.length > 0 && user?.id) {
+      // Limit to 50 messages to prevent long load times and scroll issues
+      const historyToSave = messages.slice(-50);
+      localStorage.setItem(`arthsaathi_supervisor_chat_${user.id}`, JSON.stringify(historyToSave));
     }
-  }, [messages]);
+  }, [messages, user?.id]);
 
   useEffect(() => {
     if (isOpen) {

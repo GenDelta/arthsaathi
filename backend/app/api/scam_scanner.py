@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from pydantic import BaseModel, Field
 
-from app.core.dependencies import TenantContext, get_tenant_context
+from app.core.dependencies import TenantContext, get_tenant_context, require_consent
 from app.core.exceptions import UnsupportedMediaTypeError
 from app.repositories.document import DocumentRepository
 from app.repositories.user import UserRepository
@@ -123,7 +123,7 @@ async def run_scam_analysis(doc_id: str, user_id: str) -> None:
 @router.post("", response_model=ScanInitResponse, status_code=status.HTTP_202_ACCEPTED)
 async def init_scan(
     file: Annotated[UploadFile, File(...)],
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(require_consent("STATEMENT_PROCESSING")),
 ) -> ScanInitResponse:
     """Upload a document image and extract text via OCR (Synchronous OCR phase)."""
     if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
@@ -135,7 +135,7 @@ async def init_scan(
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise UnsupportedMediaTypeError(f"File exceeds max size of {MAX_FILE_SIZE_BYTES} bytes")
         
-    extracted_text = extract_text(content)
+    extracted_text = await extract_text(content)
     
     doc_repo = DocumentRepository()
     doc = await doc_repo.create(

@@ -9,13 +9,16 @@ You are provided with:
 2. A list of known scam patterns or predatory clause templates that semantically matched parts of the text from our fraud database.
 
 Your task:
-1. Review the text against the matched patterns.
-2. Produce a clear, plain-language `risk_summary` explaining any predatory terms, phishing tactics, or scam patterns found. 
-   - Ground your summary STRICTLY in the retrieved matches. 
-   - Do NOT invent risks or use external knowledge. 
-   - If a matched pattern is a false positive (not actually related to the text's intent), ignore it.
-   - If no scams or predatory clauses are present, state that the text appears safe and assign a score of 0.0.
-3. Calculate an overall `risk_score` from 0.0 to 1.0 (where 0.0 is completely safe, and 1.0 is extremely dangerous/predatory) based on the severity of the confirmed matches.
+1. Review the user's text to identify ANY phishing tactics, suspicious URLs, scam patterns, or predatory financial terms.
+2. Produce a clear, plain-language `risk_summary` explaining why the text is dangerous or safe.
+   - You may use the provided database matches as hints, but you MUST ALSO use your own expertise to identify obvious SMS scams, fake loan approvals, urgency tactics, and suspicious shortened URLs (like klr.bz, etc).
+   - If the text contains a suspicious URL, fake loan approval, or phishing attempt, explain the exact danger explicitly.
+   - If a database match is irrelevant to the text, ignore the match.
+   - Do NOT invent facts, but DO explain the general mechanics of the scam you identified.
+3. Calculate an overall `risk_score` from 0.0 to 1.0. 
+   - 0.0: Completely safe (e.g., a normal conversation).
+   - 0.4 to 0.6: Medium risk (promotional but not necessarily a scam).
+   - 0.7 to 1.0: High risk (phishing links, fake loan approvals, severe predatory clauses).
 
 You must reply in JSON format exactly matching this schema:
 {{

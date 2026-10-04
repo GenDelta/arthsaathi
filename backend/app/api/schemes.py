@@ -30,8 +30,17 @@ async def match_schemes(req: MatchRequest, ctx: TenantContext = Depends(get_tena
         row = await cursor.fetchone()
         if row:
             profile = dict(row)
+            if profile.get("cached_schemes") and not req.query:
+                import json
+                try:
+                    cached = json.loads(row["cached_schemes"])
+                    logger.info("Returning cached scheme matches for user %s", ctx.user_id)
+                    return MatchResponse(schemes=cached)
+                except Exception as e:
+                    logger.warning("Failed to load cached schemes for user %s: %s", ctx.user_id, e)
             
-    # Execute LangGraph workflow
+    # Execute LangGraph workflow synchronously as fallback if cache misses or targeted query provided
+    logger.info("Computing scheme matches synchronously for user %s (query: %r)", ctx.user_id, req.query)
     state = {
         "user_profile": profile,
         "behavioral_summary": "Standard risk profile.", # In phase 4, this comes from flagged_entities
@@ -42,6 +51,9 @@ async def match_schemes(req: MatchRequest, ctx: TenantContext = Depends(get_tena
     }
     
     result = await matchmaker_agent.ainvoke(state)
+    
+    # Optionally, we could cache the synchronously computed result here, 
+    # but background caching handles the primary flow.
     
     return MatchResponse(schemes=result.get("final_schemes", []))
 

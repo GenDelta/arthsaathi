@@ -24,18 +24,18 @@ def mock_llm_and_embeddings(monkeypatch, request):
     fake_embeddings = FakeEmbeddings(size=384)
     
     if "safe" in request.node.name:
-        monkeypatch.setattr(llm, "get_llm", lambda: fake_safe_llm)
+        monkeypatch.setattr(llm, "get_llm", lambda **kwargs: fake_safe_llm)
     else:
-        monkeypatch.setattr(llm, "get_llm", lambda: fake_predatory_llm)
+        monkeypatch.setattr(llm, "get_llm", lambda **kwargs: fake_predatory_llm)
         
-    monkeypatch.setattr(llm, "get_embeddings", lambda: fake_embeddings)
+    monkeypatch.setattr(llm, "get_embeddings", lambda **kwargs: fake_embeddings)
     
     # We must also patch it in the graph module where it's imported if needed,
     # but since graph.py calls `get_llm()` and `get_embeddings()` at runtime, 
     # patching `app.core.llm` works perfectly.
     import app.agents.scam.graph
-    monkeypatch.setattr(app.agents.scam.graph, "get_llm", lambda: fake_safe_llm if "safe" in request.node.name else fake_predatory_llm)
-    monkeypatch.setattr(app.agents.scam.graph, "get_embeddings", lambda: fake_embeddings)
+    monkeypatch.setattr(app.agents.scam.graph, "get_llm", lambda **kwargs: fake_safe_llm if "safe" in request.node.name else fake_predatory_llm)
+    monkeypatch.setattr(app.agents.scam.graph, "get_embeddings", lambda **kwargs: fake_embeddings)
 
 @pytest.mark.asyncio
 async def test_scam_graph_predatory_clause():

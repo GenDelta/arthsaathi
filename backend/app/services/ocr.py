@@ -11,7 +11,9 @@ MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 if get_settings().tesseract_cmd:
     pytesseract.pytesseract.tesseract_cmd = get_settings().tesseract_cmd
 
-def extract_text(image_bytes: bytes) -> str:
+import asyncio
+
+async def extract_text(image_bytes: bytes) -> str:
     """
     Extract text from an image byte buffer using OCR (pytesseract).
     
@@ -39,11 +41,11 @@ def extract_text(image_bytes: bytes) -> str:
 
     # Run OCR. Note: this requires tesseract-ocr binary to be installed on the system.
     # In production, we'd add 'hin+eng' for bilingual OCR.
+    loop = asyncio.get_event_loop()
     try:
-        text = pytesseract.image_to_string(image, lang="eng+hin").strip()
+        text = await loop.run_in_executor(None, lambda: pytesseract.image_to_string(image, lang="eng+hin").strip())
     except pytesseract.TesseractNotFoundError:
         # Fallback if tesseract is not installed locally; mostly for testing.
-        # In a real environment, this should just raise or log a critical error.
         text = "MOCK_OCR_TEXT: WARNING_TESSERACT_NOT_FOUND"
 
     if not text:
