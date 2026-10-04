@@ -366,3 +366,40 @@ export const guardianApi = {
     });
   }
 };
+
+
+export interface ConsentStatus {
+  purpose: string;
+  granted: boolean;
+  notice_version: string;
+  updated_at: string;
+}
+
+export const consentApi = {
+  async grant(token: string, purposes: string[]): Promise<void> {
+    await request('/api/consent/grant', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ purposes })
+    });
+  },
+  async revoke(token: string, purpose: string): Promise<void> {
+    await request('/api/consent/withdraw', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ purpose })
+    });
+  },
+  async status(token: string): Promise<{ consents: ConsentStatus[] }> {
+    return request<{ consents: ConsentStatus[] }>('/api/consent/status', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+  async deleteData(token: string): Promise<{ erased_tables: Record<string, number> }> {
+    return request<{ erased_tables: Record<string, number> }>('/api/consent/erase', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  }
+};

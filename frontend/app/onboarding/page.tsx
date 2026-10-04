@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { translations, Language } from "@/lib/i18n";
 import { Loader2, Send } from "lucide-react";
+import { ConsentStep } from "./ConsentStep";
+import { consentApi } from "@/lib/api-client";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -23,6 +25,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<Record<string, any>>({});
   const [complete, setComplete] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitialized = useRef(false);
@@ -57,26 +60,32 @@ export default function OnboardingPage() {
 
       if (res.is_complete) {
         setComplete(true);
-        try {
-          await onboardingApi.complete(res.current_profile, accessToken);
-        } catch (completeErr) {
-          console.error("complete() failed:", completeErr);
-          // Don't block redirect on complete failure — still mark onboarded
-        }
-        // Mark as onboarded in the store IMMEDIATELY so the layout guard
-        // doesn't bounce us back to /onboarding when /dashboard mounts.
-        setOnboarded(true);
-        try {
-          await fetchMe();
-        } catch (meErr) {
-          console.error("fetchMe() failed:", meErr);
-        }
-        setTimeout(() => {
-          router.replace("/dashboard");
-        }, 2000);
+        setShowConsent(true); // Switch to consent view instead of redirecting immediately
       }
     } catch (err) {
       console.error("handleChat error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  
+  async function handleConsent(purposes: string[]) {
+    if (!accessToken) return;
+    setLoading(true);
+    try {
+      // 1. Save profile
+      await onboardingApi.complete(profile, accessToken);
+      // 2. Save consent
+      if (purposes.length > 0) {
+        await consentApi.grant(accessToken, purposes);
+      }
+      
+      setOnboarded(true);
+      await fetchMe();
+      router.replace("/dashboard");
+    } catch (err) {
+      console.error("Consent step failed:", err);
     } finally {
       setLoading(false);
     }
@@ -107,6 +116,14 @@ export default function OnboardingPage() {
         </div>
       </header>
 
+      {showConsent ? (
+        <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col">
+          <div className="my-auto w-full">
+            <ConsentStep onComplete={handleConsent} loading={loading} />
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Chat Area — centered column, comfortable reading width */}
       <div className="flex-1 overflow-y-auto py-6 px-4">
         <div className="max-w-2xl mx-auto flex flex-col gap-4">
@@ -145,7 +162,12 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Input Bar — full width footer, input constrained to match chat column */}
+      </>
+      )}
+
+      {!showConsent && (
+        <>
+        {/* Input Bar — full width footer, input constrained to match chat column */}
       <div className="px-4 py-4 border-t border-border bg-[#0A0A0A] shrink-0">
         <form onSubmit={onSubmit} className="max-w-2xl mx-auto flex gap-3">
           <Input
@@ -164,6 +186,8 @@ export default function OnboardingPage() {
           </Button>
         </form>
       </div>
+      </>
+      )}
     </div>
   );
 }

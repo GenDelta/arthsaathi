@@ -3,7 +3,7 @@
 import logging
 
 import aiosqlite
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
@@ -58,7 +58,7 @@ class CompleteResponse(BaseModel):
     success: bool
 
 @router.post("/complete", response_model=CompleteResponse)
-async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depends(get_tenant_context)) -> CompleteResponse:
+async def complete_onboarding(body: CompleteRequest, background_tasks: BackgroundTasks, ctx: TenantContext = Depends(get_tenant_context)) -> CompleteResponse:
     db_path = get_settings().database_path
     profile = body.profile
 
@@ -86,8 +86,8 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
         await conn.execute(
             """
             INSERT INTO user_profiles 
-                (user_id, employment_type, occupation, income_frequency, average_income, financial_pain_points, date_of_birth, gender, state_of_residence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, employment_type, occupation, income_frequency, average_income, financial_pain_points, date_of_birth, gender, state_of_residence, legal_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 employment_type = excluded.employment_type,
                 occupation = excluded.occupation,
@@ -97,6 +97,7 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
                 date_of_birth = excluded.date_of_birth,
                 gender = excluded.gender,
                 state_of_residence = excluded.state_of_residence,
+                legal_name = excluded.legal_name,
                 updated_at = datetime('now')
             """,
             (
@@ -108,7 +109,8 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
                 profile.get("financial_pain_points"),
                 profile.get("date_of_birth"),
                 profile.get("gender"),
-                profile.get("state_of_residence")
+                profile.get("state_of_residence"),
+                profile.get("legal_name")
             )
         )
 
@@ -121,5 +123,9 @@ async def complete_onboarding(body: CompleteRequest, ctx: TenantContext = Depend
 
         await conn.commit()
         logger.info("Onboarding complete for user %s (employment=%s freq=%s)", ctx.user_id, employment_type, income_frequency)
+
+    # Queue background calculation of scheme matches
+    from app.services.scheme_cacher import compute_and_cache_schemes
+    background_tasks.add_task(compute_and_cache_schemes, ctx.user_id, profile)
 
     return CompleteResponse(success=True)

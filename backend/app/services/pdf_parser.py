@@ -217,6 +217,15 @@ def _normalize_date(raw: str) -> str:
         mo = _MONTH_MAP.get(mon.lower())
         if mo:
             return f"{y}-{mo}-{d.zfill(2)}"
+    # DD-Mon-YY (e.g. 03-Sep-26)
+    m = re.match(r"^(\d{1,2})[-/]([A-Za-z]{3})[-/](\d{2})$", raw, re.IGNORECASE)
+    if m:
+        d, mon, y = m.groups()
+        mo = _MONTH_MAP.get(mon.lower())
+        if mo:
+            year = f"20{y}" if int(y) < 70 else f"19{y}"
+            return f"{year}-{mo}-{d.zfill(2)}"
+            
     return raw  # already ISO or unrecognised
 
 
@@ -384,11 +393,35 @@ def _row_to_transaction(
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
+def extract_account_number(text: str) -> str | None:
+    patterns = [
+        r'(?:account\s*no|a/c\s*no|account\s*number|acc\s*no)\s*[:\-]?\s*([X\d\*]{5,18}\d{2,6})',
+        r'Account\s*:\s*([X\d\*]{5,18}\d{2,6})',
+        r'A/c\s*No\.\s*([X\d\*]{5,18}\d{2,6})',
+        r'AccountNumber\s*:\s*([X\d\*]{5,18}\d{2,6})',
+        r'(?i)account\s*number.*?\b([X\d\*]{6,18}\d{2,6})\b',
+        r'(?i)a/c\s*no.*?\b([X\d\*]{6,18}\d{2,6})\b'
+    ]
+    for p in patterns:
+        import re
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+            
+    # Very fallback: any 9-18 digit number near the top of the statement
+    head_text = text[:1000]
+    import re
+    match = re.search(r'\b(\d{9,18})\b', head_text)
+    if match:
+        return match.group(1)
+    return None
+
+
 def parse_bank_statement(
     file_bytes: bytes,
     password: str | None = None,
-) -> list[dict[str, Any]]:
-    """Parse a bank-statement PDF and return a list of transaction dicts.
+) -> dict[str, Any]:
+    """Parse a bank-statement PDF and return transactions and full text.
 
     Args:
         file_bytes: Raw bytes of the PDF file.
@@ -396,9 +429,9 @@ def parse_bank_statement(
                   no guessing is attempted.
 
     Returns:
-        A list of dicts, each with keys:
-            ``date``, ``description``, ``amount`` (float),
-            ``type`` ("INCOME"|"EXPENSE"), ``category`` (str).
+        A dict containing:
+            ``transactions``: list of dicts with keys date, description, amount, type, category.
+            ``full_text``: Extracted text from all pages.
 
     Raises:
         ImportError: If pdfplumber or pikepdf are not installed.
@@ -436,6 +469,7 @@ def parse_bank_statement(
         pdf_source = io.BytesIO(file_bytes)
 
     transactions: list[dict[str, Any]] = []
+    full_text_blocks: list[str] = []
 
     # Try multiple extraction strategies for borderless Indian bank statement layouts
     _STRATEGIES = [
@@ -468,10 +502,12 @@ def parse_bank_statement(
             header_locked = False
 
             for page_num, page in enumerate(pdf.pages, start=1):
+                raw_text = page.extract_text() or ""
+                full_text_blocks.append(raw_text)
+                
                 tables = _best_tables(page)
                 if not tables:
                     # Fall back to raw text parsing for text-layout PDFs (no visible table borders)
-                    raw_text = page.extract_text() or ""
                     if raw_text.strip():
                         text_txs = _parse_text_page(raw_text)
                         if text_txs:
@@ -526,5 +562,11 @@ def parse_bank_statement(
         raise ValueError(f"Could not parse PDF: {exc}") from exc
 
     logger.info("PDF parsing complete: %d transactions extracted", len(transactions))
-    return transactions
+    full_text_combined = "\n\n".join(full_text_blocks)
+    return {
+        "transactions": transactions,
+        "full_text": full_text_combined,
+        "account_number": extract_account_number(full_text_combined)
+    }
+
 

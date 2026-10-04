@@ -90,7 +90,8 @@ async def transaction_agent_node(state: ArthSaathiState) -> dict:
             return {"final_response": "I couldn't detect a valid amount. Please specify the amount clearly."}
             
         description = str(extracted.get("description", last_msg))[:500]
-        category = _normalise_category(str(extracted.get("category", "OTHER")), tx_type)
+        raw_category = str(extracted.get("category", "OTHER"))
+        category = _normalise_category(raw_category, tx_type)
         
         db_path = get_settings().database_path
         from datetime import timedelta
@@ -108,6 +109,32 @@ async def transaction_agent_node(state: ArthSaathiState) -> dict:
                 """,
                 (tx_id, user_id, tx_type, category, amount, description, now, now),
             )
+            
+            if raw_category.upper().strip() == "LOAN_RECEIVED":
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tracked_debts (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        entity_name TEXT NOT NULL,
+                        total_amount REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+                entity = description.lower().replace("loan from ", "").strip().title()
+                if not entity or entity == "Loan":
+                    entity = "Unknown Lender"
+                
+                # Check if tracker already exists
+                c_chk = await conn.execute("SELECT id FROM tracked_debts WHERE user_id = ? AND LOWER(entity_name) = ?", (user_id, entity.lower()))
+                if not await c_chk.fetchone():
+                    debt_id = str(uuid.uuid4())
+                    await conn.execute(
+                        "INSERT INTO tracked_debts (id, user_id, entity_name, total_amount, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (debt_id, user_id, entity, amount, now)
+                    )
+
             await conn.commit()
             
         # We trigger the background rules via API wrapper or just return success
@@ -150,7 +177,7 @@ async def scam_agent_node(state: ArthSaathiState) -> dict:
 async def general_agent_node(state: ArthSaathiState) -> dict:
     """Handle general chitchat."""
     llm = get_llm(temperature=0.6)
-    sys_msg = "You are ArthSaathi, a friendly financial assistant for Indian gig workers. Keep your responses highly concise, strictly under 3-4 sentences, and use simple markdown for readability."
+    sys_msg = "You are ArthSaathi, a friendly financial assistant for Indian gig workers. Keep your responses highly concise, strictly under 3-4 sentences, and use simple markdown. IMPORTANT: ONLY answer the user's most recent message. If past messages in the conversation history were redirected to other tools (like Katha Mode or Scam Scanner), DO NOT answer them now. Focus purely on the newest request."
     res = await llm.ainvoke([SystemMessage(content=sys_msg)] + list(state["messages"]))
     return {"final_response": res.content}
 

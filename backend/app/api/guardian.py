@@ -87,12 +87,25 @@ async def track_debt(
             )
             """
         )
+
         debt_id = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
         await conn.execute(
             "INSERT INTO tracked_debts (id, user_id, entity_name, total_amount, created_at) VALUES (?, ?, ?, ?, ?)",
-            (debt_id, ctx.user_id, req.entity_name, req.total_amount, datetime.utcnow().isoformat())
+            (debt_id, ctx.user_id, req.entity_name, req.total_amount, now)
+        )
+        
+        # Also insert as INCOME transaction
+        tx_id = str(uuid.uuid4())
+        await conn.execute(
+            """
+            INSERT INTO transactions (id, user_id, type, category, amount, currency, description, occurred_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (tx_id, ctx.user_id, "INCOME", "LOAN_RECEIVED", req.total_amount, "INR", f"Loan from {req.entity_name}", now, now)
         )
         await conn.commit()
+
     return {"success": True, "id": debt_id}
 
 @router.get("/nudges", response_model=NudgesResponse)
@@ -170,8 +183,9 @@ async def get_nudges(
             )
             """
         )
+
         c_tracked = await conn.execute(
-            "SELECT id, entity_name, total_amount FROM tracked_debts WHERE user_id = ?",
+            "SELECT id, entity_name, total_amount, created_at FROM tracked_debts WHERE user_id = ?",
             (ctx.user_id,)
         )
         tracked_rows = await c_tracked.fetchall()
@@ -179,18 +193,19 @@ async def get_nudges(
         tracked_progress = []
         for tr in tracked_rows:
             entity = tr["entity_name"]
+            created_at = tr["created_at"]
             
-            # Additional loans taken (INCOME)
+            # Additional loans taken (INCOME) STRICTLY AFTER the tracker was created
             c_inc = await conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) as additional FROM transactions WHERE user_id = ? AND type = 'INCOME' AND LOWER(description) LIKE ?",
-                (ctx.user_id, f"%{entity.lower()}%")
+                "SELECT COALESCE(SUM(amount), 0) as additional FROM transactions WHERE user_id = ? AND type = 'INCOME' AND LOWER(description) LIKE ? AND (occurred_at > ? OR (occurred_at IS NULL AND created_at > ?))",
+                (ctx.user_id, f"%{entity.lower()}%", created_at, created_at)
             )
             r_inc = await c_inc.fetchone()
             
-            # Total paid all time
+            # Total paid all time AFTER the tracker was created (>= because payments can be same day)
             c_tot = await conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) as paid FROM transactions WHERE user_id = ? AND type = 'EXPENSE' AND LOWER(description) LIKE ?",
-                (ctx.user_id, f"%{entity.lower()}%")
+                "SELECT COALESCE(SUM(amount), 0) as paid FROM transactions WHERE user_id = ? AND type = 'EXPENSE' AND LOWER(description) LIKE ? AND (occurred_at >= ? OR (occurred_at IS NULL AND created_at >= ?))",
+                (ctx.user_id, f"%{entity.lower()}%", created_at, created_at)
             )
             r_tot = await c_tot.fetchone()
             
@@ -201,13 +216,20 @@ async def get_nudges(
             )
             r_per = await c_per.fetchone()
             
+            target = tr["total_amount"] + r_inc["additional"]
+            paid_total = r_tot["paid"]
+            
+            if paid_total >= target and target > 0:
+                continue # Debt fully paid, don't show tracker
+                
             tracked_progress.append({
                 "id": tr["id"],
                 "entity": entity,
-                "target": tr["total_amount"] + r_inc["additional"],
-                "paid_total": r_tot["paid"],
+                "target": target,
+                "paid_total": paid_total,
                 "paid_period": r_per["paid"]
             })
+
 
         c_feed = await conn.execute(
             "SELECT action FROM nudge_feedback WHERE user_id = ? AND nudge_type = 'MICRO_SAVINGS' ORDER BY created_at DESC LIMIT 5",

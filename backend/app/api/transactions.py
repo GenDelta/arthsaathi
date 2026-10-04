@@ -287,18 +287,87 @@ async def upload_pdf(
     if not parsed:
         return UploadPdfResponse(inserted=0, transactions=[])
 
+    parsed_txs = parsed.get("transactions", [])
+    full_text = parsed.get("full_text", "")
+    
     db_path = get_settings().database_path
     now = _utcnow()
     inserted_txs: list[TransactionOut] = []
 
     async with aiosqlite.connect(db_path) as conn:
         conn.row_factory = aiosqlite.Row
+        
+        # PRIVACY CHECK 1: Cryptographic Account Binding
+        account_number = parsed.get("account_number")
+        if account_number:
+            import hashlib
+            secret = get_settings().jwt_secret
+            hmac_hash = hashlib.sha256(f"{account_number}:{secret}".encode()).hexdigest()
+            
+            c_acct = await conn.execute("SELECT user_id FROM account_bindings WHERE account_hmac = ?", (hmac_hash,))
+            existing_binding = await c_acct.fetchone()
+            
+            if existing_binding:
+                if existing_binding["user_id"] != ctx.user_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Privacy Check Failed: This bank account is already registered to another user."
+                    )
+            else:
+                # Bind this account to the current user
+                binding_id = str(uuid.uuid4())
+                await conn.execute(
+                    "INSERT INTO account_bindings (id, user_id, account_hmac, account_last4, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (binding_id, ctx.user_id, hmac_hash, account_number[-4:], datetime.now(timezone.utc).isoformat())
+                )
+        
+        # PRIVACY CHECK 2: Name Verification (Fallback and Extra Security)
+        cursor = await conn.execute(
+            "SELECT legal_name FROM user_profiles WHERE user_id = ?",
+            (ctx.user_id,)
+        )
+        row = await cursor.fetchone()
+        if row and row["legal_name"]:
+            legal_name = row["legal_name"]
+            if legal_name.strip():
+                header_text = full_text[:1500]
+                # Pre-filter: if name isn't even in the top 1500, fast fail
+                if legal_name.lower() not in header_text.lower():
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Privacy Check Failed: We could not find your registered bank statement name '{legal_name}' in this PDF. To protect your privacy, we only process your own statements."
+                    )
+                
+                # LLM Verification: Ensure they are actually the account holder, not just a transaction recipient
+                from app.core.llm import get_llm
+                llm = get_llm(temperature=0.0)
+                prompt = f"""You are a strict bank statement analyzer.
+Extract the exact name of the PRIMARY ACCOUNT HOLDER from this bank statement header.
+Return ONLY the name, nothing else. If you cannot find it, return 'UNKNOWN'.
+
+Bank Statement Header:
+{header_text}
+"""
+                response = await llm.ainvoke(prompt)
+                extracted_name = str(response.content).strip().lower()
+                
+                # Check if the legal_name is part of the extracted name (e.g. "ankush dutta" in "mr. ankush dutta")
+                # or vice-versa (e.g. "ankush" in "ankush dutta")
+                name_parts = legal_name.lower().split()
+                matches = any(part in extracted_name for part in name_parts if len(part) > 2)
+                
+                if not matches and extracted_name != "unknown":
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Privacy Check Failed: The account holder appears to be '{extracted_name.title()}', not you."
+                    )
+
         await _ensure_transactions_table(conn)
 
         import hashlib
         seen_hashes = {}
 
-        for item in parsed:
+        for item in parsed_txs:
             occurred_at = item.get("date") or now
             tx_type = item["type"]
             category = _normalise_category(item.get("category", "OTHER"), tx_type)
@@ -314,88 +383,68 @@ async def upload_pdf(
             tx_id = hashlib.md5(fingerprint.encode("utf-8")).hexdigest()
 
             cursor = await conn.execute(
+                "SELECT 1 FROM transactions WHERE id = ?", (tx_id,)
+            )
+            if await cursor.fetchone():
+                continue
+
+            await conn.execute(
                 """
-                INSERT OR IGNORE INTO transactions
-                    (id, user_id, type, category, amount, currency, description, occurred_at, created_at)
+                INSERT INTO transactions (id, user_id, type, category, amount, currency, description, occurred_at, created_at)
                 VALUES (?, ?, ?, ?, ?, 'INR', ?, ?, ?)
                 """,
-                (
-                    tx_id,
-                    ctx.user_id,
-                    tx_type,
-                    category,
-                    amount,
-                    desc,
-                    occurred_at,
-                    now,
-                ),
+                (tx_id, ctx.user_id, tx_type, category, amount, desc, occurred_at, now)
             )
-            
-            # Only append to inserted_txs if it was actually inserted (not ignored)
-            if cursor.rowcount > 0:
-                inserted_txs.append(
-                    TransactionOut(
-                        id=tx_id,
-                        user_id=ctx.user_id,
-                        type=tx_type,
-                        category=category,
-                        amount=amount,
-                        currency="INR",
-                        description=desc,
-                        occurred_at=occurred_at,
-                        created_at=now,
-                    )
+
+            inserted_txs.append(
+                TransactionOut(
+                    id=tx_id,
+                    user_id=ctx.user_id,
+                    type=tx_type,
+                    category=category,
+                    amount=amount,
+                    currency="INR",
+                    description=desc,
+                    occurred_at=occurred_at,
+                    created_at=now,
                 )
+            )
 
         await conn.commit()
-
-    logger.info("PDF upload: inserted %d transactions for user %s", len(inserted_txs), ctx.user_id)
-    if background_tasks:
-        from app.api.guardian import run_background_guardian_checks
-        background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
+        
+        # Fire background guardian scan
+        if inserted_txs and background_tasks:
+            from app.api.guardian import run_background_guardian_checks
+            background_tasks.add_task(run_background_guardian_checks, ctx.user_id)
 
     return UploadPdfResponse(inserted=len(inserted_txs), transactions=inserted_txs)
 
-
-# ─── POST /api/transactions/voice ────────────────────────────────────────────
-
-_VOICE_EXTRACTION_PROMPT = """\
-You are a financial transaction extractor for Indian gig and agricultural workers.
-Extract structured transaction information from the user's natural-language input.
-
-Respond ONLY with a valid JSON object — no markdown, no explanation. Schema:
-{{
-  "type": "INCOME" or "EXPENSE",
-  "amount": <number in INR>,
-  "description": "<short description>",
-  "category": "<for INCOME use one of: GIG_WAGE, AGRICULTURAL_SALE, OTHER_INCOME; for EXPENSE use one of: FOOD, TRANSPORT, UTILITIES, DEBT_REPAYMENT, DISCRETIONARY, HEALTHCARE, OTHER_EXPENSE>"
-}}
-
-Examples:
-- "earned 500 from zomato" -> {{"type":"INCOME","amount":500,"description":"Zomato delivery earnings","category":"GIG_WAGE"}}
-- "spent 120 on lunch" -> {{"type":"EXPENSE","amount":120,"description":"Lunch","category":"FOOD"}}
-- "sold wheat for 3000" -> {{"type":"INCOME","amount":3000,"description":"Wheat sale","category":"AGRICULTURAL_SALE"}}
-- "paid 1200 emi" -> {{"type":"EXPENSE","amount":1200,"description":"EMI payment","category":"DEBT_REPAYMENT"}}
-
-User input: {text}
-"""
-
-# Normalize any LLM-hallucinated category to a valid DB value
 _INCOME_CATEGORIES = {"GIG_WAGE", "AGRICULTURAL_SALE", "OTHER_INCOME"}
 _EXPENSE_CATEGORIES = {"FOOD", "TRANSPORT", "UTILITIES", "DEBT_REPAYMENT", "DISCRETIONARY", "HEALTHCARE", "OTHER_EXPENSE"}
 
-_CATEGORY_ALIASES: dict[str, str] = {
-    "SALARY": "OTHER_INCOME", "WAGES": "OTHER_INCOME", "TRANSFER": "OTHER_INCOME",
-    "REFUND": "OTHER_INCOME", "INTEREST": "OTHER_INCOME", "DIVIDEND": "OTHER_INCOME",
-    "CASHBACK": "OTHER_INCOME", "STIPEND": "OTHER_INCOME", "OTHER": "OTHER_INCOME",
-    "INCOME": "OTHER_INCOME", "GIG": "GIG_WAGE", "AGRICULTURE": "AGRICULTURAL_SALE",
-    "FARM": "AGRICULTURAL_SALE", "CROP": "AGRICULTURAL_SALE",
-    "UTILITY": "UTILITIES", "RENT": "DEBT_REPAYMENT", "LOAN_EMI": "DEBT_REPAYMENT",
-    "LOAN": "DEBT_REPAYMENT", "EMI": "DEBT_REPAYMENT", "HOUSING": "DEBT_REPAYMENT",
-    "ENTERTAINMENT": "DISCRETIONARY", "SHOPPING": "DISCRETIONARY",
-    "MEDICAL": "HEALTHCARE", "HEALTH": "HEALTHCARE",
-    "EXPENSE": "OTHER_EXPENSE", "OTHER_EXPENSES": "OTHER_EXPENSE",
-    "FOOD_AND_DINING": "FOOD", "DINING": "FOOD", "GROCERY": "FOOD",
+_CATEGORY_ALIASES = {
+    "SALARY": "OTHER_INCOME",
+    "TRANSFER": "OTHER_INCOME",
+    "INTEREST": "OTHER_INCOME",
+    "REFUND": "OTHER_INCOME",
+    "CASHBACK": "OTHER_INCOME",
+    "LOAN_RECEIVED": "OTHER_INCOME",
+    "RENT": "UTILITIES",
+    "LOAN_REPAYMENT": "DEBT_REPAYMENT",
+    "MEDICAL": "HEALTHCARE",
+    "ENTERTAINMENT": "DISCRETIONARY",
+    "EDUCATION": "DISCRETIONARY",
+    "SHOPPING": "DISCRETIONARY",
+    "FEE": "OTHER_EXPENSE",
+    "CASH_WITHDRAWAL": "OTHER_EXPENSE",
+    "UTILITY": "UTILITIES",
+    "ATM": "OTHER_EXPENSE",
+    "DEPOSIT": "OTHER_INCOME",
+    "GIG": "GIG_WAGE",
+    "GROCERY": "FOOD",
+    "RESTAURANT": "FOOD",
+    "OTHER": "OTHER_EXPENSE",
+    "LOAN_RECEIVED": "OTHER_INCOME"
 }
 
 def _normalise_category(raw: str, tx_type: str) -> str:
@@ -409,6 +458,27 @@ def _normalise_category(raw: str, tx_type: str) -> str:
             return c
         return _CATEGORY_ALIASES.get(c, "OTHER_EXPENSE")
 
+
+_VOICE_EXTRACTION_PROMPT = """
+You are a financial extraction API. Extract the transaction details from the user's message.
+Output ONLY raw JSON with no markdown formatting.
+
+Categories must strictly be one of:
+INCOME: GIG_WAGE, AGRICULTURAL_SALE, OTHER_INCOME, LOAN_RECEIVED
+EXPENSE: FOOD, TRANSPORT, UTILITIES, DEBT_REPAYMENT, DISCRETIONARY, HEALTHCARE, OTHER_EXPENSE
+
+*Note: If the user states they TOOK or RECEIVED a loan, the type MUST be INCOME and the category MUST be LOAN_RECEIVED. If they are PAYING OFF a loan, type is EXPENSE and category is DEBT_REPAYMENT.
+
+JSON Schema:
+{{
+    "type": "INCOME" | "EXPENSE",
+    "amount": float,
+    "description": "Short clean summary",
+    "category": "ONE OF THE CATEGORIES ABOVE"
+}}
+
+User Message: {text}
+"""
 
 @router.post("/voice", response_model=VoiceResponse)
 async def voice_transaction(
@@ -465,6 +535,32 @@ async def voice_transaction(
             """,
             (tx_id, ctx.user_id, tx_type, category, amount, description, now, now),
         )
+        
+        if raw_category.upper().strip() == "LOAN_RECEIVED":
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tracked_debts (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    entity_name TEXT NOT NULL,
+                    total_amount REAL NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            entity = description.lower().replace("loan from ", "").strip().title()
+            if not entity or entity == "Loan":
+                entity = "Unknown Lender"
+            
+            # Check if tracker already exists
+            c_chk = await conn.execute("SELECT id FROM tracked_debts WHERE user_id = ? AND LOWER(entity_name) = ?", (ctx.user_id, entity.lower()))
+            if not await c_chk.fetchone():
+                debt_id = str(uuid.uuid4())
+                await conn.execute(
+                    "INSERT INTO tracked_debts (id, user_id, entity_name, total_amount, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (debt_id, ctx.user_id, entity, amount, now)
+                )
+
         await conn.commit()
 
     # Trigger background async checks

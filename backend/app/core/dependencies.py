@@ -102,3 +102,34 @@ def require_role(*roles: str) -> Callable[..., TenantContext]:
         return ctx
 
     return _check
+
+from app.core.exceptions import ArthSaathiError
+from fastapi import status
+
+class ConsentRequiredError(ArthSaathiError):
+    code = "CONSENT_REQUIRED"
+    http_status = status.HTTP_403_FORBIDDEN
+
+    def __init__(self, purpose: str):
+        super().__init__(message=f"Consent required for {purpose}")
+        self.extra = {"purpose": purpose}
+
+
+def require_consent(purpose: str) -> Callable[..., TenantContext]:
+    """Dependency factory to ensure active consent for a specific purpose."""
+    async def _require_consent(
+        ctx: TenantContext = Depends(get_tenant_context),
+    ) -> TenantContext:
+        from app.repositories.consent import ConsentRepository
+        from app.core.consent import CURRENT_NOTICE_VERSION
+        
+        has_consent = await ConsentRepository().has_active_consent(
+            user_id=ctx.user_id,
+            purpose=purpose,
+            notice_version=CURRENT_NOTICE_VERSION,
+        )
+        if not has_consent:
+            raise ConsentRequiredError(purpose=purpose)
+        return ctx
+
+    return _require_consent

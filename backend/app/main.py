@@ -22,6 +22,12 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Warm up the embedding model at startup (Task 3)
+    from app.core.llm import get_embeddings
+    logger.info("Warming up embedding model...")
+    get_embeddings()
+    logger.info("Embedding model ready.")
+    
     app.state.is_shutting_down = False
     yield
     app.state.is_shutting_down = True
@@ -56,19 +62,14 @@ def create_app() -> FastAPI:
         )
 
     # ─── Routers ──────────────────────────────────────────────────────────────
-    # Phase 2: Authentication
-    from app.api import auth
+    from app.api import auth, consent, onboarding, profile, scam_scanner, schemes, transactions, guardian, katha, supervisor
 
     application.include_router(auth.router, prefix="/api")
-
-    # Future phases — registered here as each phase completes:
-    from app.api import onboarding, profile, scam_scanner, schemes, transactions
+    application.include_router(consent.router, prefix="/api")
     application.include_router(scam_scanner.router, prefix="/api")
     application.include_router(onboarding.router, prefix="/api")
     application.include_router(profile.router, prefix="/api")
     application.include_router(schemes.router, prefix="/api")
-    # Phase 3: Transactions & Insights
-    from app.api import guardian, transactions, katha, supervisor
     application.include_router(transactions.router, prefix="/api")
     application.include_router(guardian.router, prefix="/api")
     application.include_router(katha.router, prefix="/api")

@@ -44,6 +44,9 @@ def get_llm(temperature: float | None = None) -> BaseChatModel:
     msg = f"Unknown LLM provider: {settings.llm_provider!r}"
     raise ValueError(msg)
 
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
 def get_embeddings() -> Embeddings:
     """Return a configured LangChain Embeddings model based on the active provider.
     Currently forces local HuggingFace embeddings to save cloud quota.

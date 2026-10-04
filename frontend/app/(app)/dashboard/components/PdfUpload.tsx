@@ -37,6 +37,14 @@ function Spinner() {
   );
 }
 
+
+const ERROR_MESSAGES: Record<string, string> = {
+  STATEMENT_OWNER_MISMATCH: "This statement does not seem to belong to you. Please upload your own bank statement.",
+  STATEMENT_OWNER_UNVERIFIED: "We could not read the account holder name on this statement. Please upload the original statement downloaded from your bank.",
+  USER_LEGAL_NAME_MISSING: "Please add your full name (as on your bank statement) in Profile before uploading.",
+  CONSENT_REQUIRED: "You need to agree to statement processing in Privacy Settings before uploading.",
+};
+
 export function PdfUpload({ onSuccess }: PdfUploadProps) {
   const { accessToken } = useAuthStore();
 
@@ -96,8 +104,13 @@ export function PdfUpload({ onSuccess }: PdfUploadProps) {
       );
       setSuccessCount(res.inserted);
       onSuccess?.();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+    } catch (err: any) {
+      if (err.info && err.info.error && err.info.error.code) {
+        const code = err.info.error.code;
+        setError(ERROR_MESSAGES[code] || err.info.error.message || "Upload failed.");
+      } else {
+        setError(err instanceof Error ? err.message : "Upload failed.");
+      }
     } finally {
       setLoading(false);
     }

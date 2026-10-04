@@ -8,10 +8,13 @@ from app.repositories.user import UserRepository
 
 
 # Mock the OCR function
+
 @pytest.fixture(autouse=True)
 def mock_ocr(monkeypatch):
     from app.api import scam_scanner
-    monkeypatch.setattr(scam_scanner, "extract_text", lambda x: "MOCK_OCR_TEXT")
+    async def async_mock(x): return "MOCK_OCR_TEXT"
+    monkeypatch.setattr(scam_scanner, "extract_text", async_mock)
+
 
 
 # Mock the scam_graph graph
@@ -46,6 +49,9 @@ async def test_scam_scanner_flow(async_client: AsyncClient):
     
     # Generate token
     token = create_access_token(user.id, user.role, user.organization_id)
+
+    # Grant consent
+    await async_client.post("/api/consent/grant", json={"purposes": ["STATEMENT_PROCESSING"]}, headers={"Authorization": f"Bearer {token}"})
     headers = {"Authorization": f"Bearer {token}"}
     
     # 1. Init scan
@@ -95,7 +101,9 @@ async def test_scam_scanner_tenant_isolation(async_client: AsyncClient):
     )
     
     token1 = create_access_token(user1.id, user1.role, user1.organization_id)
+    await async_client.post("/api/consent/grant", json={"purposes": ["STATEMENT_PROCESSING"]}, headers={"Authorization": f"Bearer {token1}"})
     token2 = create_access_token(user2.id, user2.role, user2.organization_id)
+    await async_client.post("/api/consent/grant", json={"purposes": ["STATEMENT_PROCESSING"]}, headers={"Authorization": f"Bearer {token2}"})
     
     # User 1 creates a document
     file_content = b"fake image bytes"
