@@ -24,6 +24,7 @@ RUN curl -Ls https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
+ENV PYTHONPATH="/app"
 
 # Copy dependency manifest first (better layer caching)
 COPY pyproject.toml ./
@@ -52,8 +53,8 @@ RUN JWT_SECRET=build-time-placeholder python -m app.db.init_lancedb
 
 # 4. Seed schemes + predatory clauses into SQLite and LanceDB
 #    This is the memory-heavy step — safe here, OOM-safe at runtime
-RUN JWT_SECRET=build-time-placeholder python scripts/seed_schemes.py && \
-    JWT_SECRET=build-time-placeholder python scripts/seed_clauses.py
+RUN JWT_SECRET=build-time-placeholder PYTHONPATH=/app python scripts/seed_schemes.py && \
+    JWT_SECRET=build-time-placeholder PYTHONPATH=/app python scripts/seed_clauses.py
 
 # ───────────────────────────────────────────────────────────────────────────
 
