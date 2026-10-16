@@ -43,14 +43,17 @@ HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2'); \
 print('Embedding model downloaded.')"
 
 # 2. Run DB migrations
-RUN python -m app.db.init_db
+# JWT_SECRET is required by pydantic Settings — use a build-time placeholder.
+# Render's real JWT_SECRET env var overrides this at runtime.
+RUN JWT_SECRET=build-time-placeholder python -m app.db.init_db
 
 # 3. Init LanceDB tables
-RUN python -m app.db.init_lancedb
+RUN JWT_SECRET=build-time-placeholder python -m app.db.init_lancedb
 
 # 4. Seed schemes + predatory clauses into SQLite and LanceDB
 #    This is the memory-heavy step — safe here, OOM-safe at runtime
-RUN python scripts/seed_schemes.py && python scripts/seed_clauses.py
+RUN JWT_SECRET=build-time-placeholder python scripts/seed_schemes.py && \
+    JWT_SECRET=build-time-placeholder python scripts/seed_clauses.py
 
 # ───────────────────────────────────────────────────────────────────────────
 
