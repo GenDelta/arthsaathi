@@ -36,29 +36,39 @@ def _get_connection(database_path: str) -> sqlite3.Connection:
 
 def _apply_migrations(conn: sqlite3.Connection) -> None:
     """Apply every *.sql file in the migrations directory, in sorted order."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "version TEXT PRIMARY KEY, "
+        "applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ");"
+    )
+    conn.commit()
+
+    applied = {
+        row[0] for row in conn.execute("SELECT version FROM schema_migrations;").fetchall()
+    }
+
     migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
     if not migration_files:
         logger.warning("No migration files found in %s", MIGRATIONS_DIR)
         return
 
     for migration_path in migration_files:
+        if migration_path.name in applied:
+            logger.debug("Migration %s already applied — skipping.", migration_path.name)
+            continue
+
         logger.info("Applying migration: %s", migration_path.name)
         sql = migration_path.read_text(encoding="utf-8")
         try:
             conn.executescript(sql)
         except sqlite3.OperationalError as exc:
-            if "duplicate column name" in str(exc).lower():
-                # Migration already partially applied (ALTER TABLE already ran).
-                # Re-run only the non-ALTER statements using executescript on a
-                # filtered version of the SQL.
-                logger.debug("Duplicate column detected — skipping ALTER TABLE statements: %s", exc)
-                filtered = "\n".join(
-                    line for line in sql.splitlines()
-                    if not line.strip().upper().startswith("ALTER TABLE")
-                )
-                conn.executescript(filtered)
+            err_msg = str(exc).lower()
+            if "duplicate column name" in err_msg or "already exists" in err_msg:
+                logger.debug("Tolerating existing column/table in %s: %s", migration_path.name, exc)
             else:
                 raise
+        conn.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (?);", (migration_path.name,))
         conn.commit()
         logger.info("Migration applied: %s", migration_path.name)
 
