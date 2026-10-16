@@ -25,6 +25,13 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 ENV PYTHONPATH="/app"
+ENV CUDA_VISIBLE_DEVICES=""
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV TOKENIZERS_PARALLELISM=false
+
+# Pre-install CPU-only PyTorch (avoids 2.5GB+ of NVIDIA CUDA libraries, drops RAM to ~100MB)
+RUN uv pip install --system --no-cache torch --index-url https://download.pytorch.org/whl/cpu
 
 # Copy dependency manifest first (better layer caching)
 COPY pyproject.toml ./
