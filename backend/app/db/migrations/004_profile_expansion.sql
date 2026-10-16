@@ -1,9 +1,9 @@
-﻿-- 004_profile_expansion.sql
+-- 004_profile_expansion.sql
 
 ALTER TABLE user_profiles ADD COLUMN date_of_birth DATE;
 ALTER TABLE user_profiles ADD COLUMN state_of_residence VARCHAR;
 
-CREATE TABLE flagged_entities (
+CREATE TABLE IF NOT EXISTS flagged_entities (
     id VARCHAR PRIMARY KEY,
     user_id VARCHAR NOT NULL,
     entity_name VARCHAR NOT NULL,
