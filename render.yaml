@@ -1,0 +1,44 @@
+# ArthSaathi Render Blueprint
+# Deploy both backend and frontend from a single file.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # ── Backend (FastAPI) ─────────────────────────────────────────────────────
+  - type: web
+    name: arthsaathi-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true              # Render auto-generates a secure value
+      - key: LLM_PROVIDER
+        value: ollama
+      - key: LLM_MODEL_NAME
+        value: glm-5.3:cloud
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.ai         # The remote Ollama endpoint
+      - key: DATABASE_PATH
+        value: ./arthsaathi.db
+      - key: LANCEDB_PATH
+        value: ./.lancedb
+      - key: TESSERACT_CMD
+        value: /usr/bin/tesseract        # Installed by Dockerfile apt-get
+      - key: CORS_ORIGINS
+        sync: false                      # Set to your frontend URL after first deploy
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────
+  - type: web
+    name: arthsaathi-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false                      # Set to your backend URL after first deploy
+      - key: PORT
+        value: 3000

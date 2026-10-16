@@ -1,0 +1,13 @@
+# .dockerignore — exclude local dev artifacts from Docker build context
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+arthsaathi.db
+.lancedb/
+.env
+*.log
+tests/
+.git/
