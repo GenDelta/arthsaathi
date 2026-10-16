@@ -86,7 +86,7 @@ export function OverviewCards({
     setError(null);
 
     transactionsApi
-      .list(accessToken, { start_date, end_date, limit: 500 })
+      .list(accessToken, { start_date, end_date, page_size: 500 })
       .then((res) => setSummary(res.summary))
       .catch((err) => setError(err.message || "Failed to load summary"))
       .finally(() => setLoading(false));
