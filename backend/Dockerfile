@@ -4,6 +4,7 @@
 #   • Tesseract OCR (for scam-scanner PDF/image processing)
 #   • uv for fast dependency installation
 #   • HuggingFace embedding model pre-downloaded at build time
+#   • SQLite DB + LanceDB seeded at build time (avoids 512MB OOM on free tier)
 # ───────────────────────────────────────────────────────────────────────────
 
 FROM python:3.11-slim
@@ -30,18 +31,30 @@ COPY pyproject.toml ./
 # Install all production dependencies
 RUN uv pip install --system --no-cache -e .
 
-# Pre-download the HuggingFace embedding model so it's baked into the image
-# This avoids a 2-3 min cold-start download on Render
+# Copy full application source (including data/ and scripts/)
+COPY . .
+
+# ── Build-time setup (runs with ~4GB build RAM, not 512MB runtime RAM) ──────
+
+# 1. Pre-download the HuggingFace embedding model into the image layer
 RUN python -c "\
 from langchain_huggingface import HuggingFaceEmbeddings; \
 HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2'); \
 print('Embedding model downloaded.')"
 
-# Copy application source
-COPY . .
+# 2. Run DB migrations
+RUN python -m app.db.init_db
 
-# Expose FastAPI port (Render injects $PORT at runtime)
+# 3. Init LanceDB tables
+RUN python -m app.db.init_lancedb
+
+# 4. Seed schemes + predatory clauses into SQLite and LanceDB
+#    This is the memory-heavy step — safe here, OOM-safe at runtime
+RUN python scripts/seed_schemes.py && python scripts/seed_clauses.py
+
+# ───────────────────────────────────────────────────────────────────────────
+
 EXPOSE 8000
 
-# Startup: run DB + LanceDB init, seed schemes, then launch server
+# start.sh only runs idempotent migration checks then launches uvicorn
 CMD ["bash", "start.sh"]
